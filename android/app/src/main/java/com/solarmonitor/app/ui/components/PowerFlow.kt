@@ -33,6 +33,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import com.solarmonitor.app.data.Live
+import com.solarmonitor.app.data.Power
 import com.solarmonitor.app.ui.fmtW
 import com.solarmonitor.app.ui.theme.LocalEnergy
 import kotlin.math.PI
@@ -62,7 +63,8 @@ private class Flow(val path: Path) {
  * energy is moving, faster and denser with more power.
  */
 @Composable
-fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boolean = false) {
+fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boolean = false, idleW: Int = 15) {
+    val idle by rememberUpdatedState(idleW)
     val e = LocalEnergy.current
     val cs = MaterialTheme.colorScheme
     val tm = rememberTextMeasurer()
@@ -92,7 +94,7 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
                 val dt = if (last == 0L) 0f else min(0.1f, (now - last) / 1000f)
                 last = now
                 val x = live
-                val ws = flowWatts(x, frozen)
+                val ws = flowWatts(x, frozen, idle)
                 for (i in 0..3) {
                     val frac = min(1f, ws[i] / ratedW.toFloat())
                     if (ws[i] > 0) flows[i].phase = (flows[i].phase + (38f + 150f * sqrt(frac)) * dt) % flows[i].len
@@ -111,7 +113,7 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
         val s = size.width / VW
         val x = live
         val ok = x?.ok == true && !frozen
-        val ws = flowWatts(x, frozen)
+        val ws = flowWatts(x, frozen, idle)
         val lineBase = cs.outlineVariant
         val colors = listOf(e.solar, e.grid, e.batt, e.load)
         val reverse = listOf(false, false, (x?.battW ?: 0) > 0, false)
@@ -152,8 +154,9 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
             translate(GRID.x, GRID.y) { pylonIcon(e.grid, if (x == null || gridOn) 1f else 0.35f); if (x != null && !gridOn) drawLine(e.crit, Offset(-19f, 19f), Offset(19f, -19f), 3f, StrokeCap.Round) }
 
             val battPct = x?.battPct ?: 0
-            val charging = ok && (x?.battW ?: 0) > 8
-            ring(BATT, 32f, e.batt, ok && kotlin.math.abs(x?.battW ?: 0) >= 8)
+            val bs = x?.let { Power.batt(it, idle) } ?: Power.Batt.Idle
+            val charging = ok && bs == Power.Batt.Charging
+            ring(BATT, 32f, e.batt, ok && bs != Power.Batt.Idle)
             translate(BATT.x, BATT.y) {
                 val fill = when { battPct <= 20 -> e.crit; battPct <= 45 -> e.warn; else -> e.batt }
                 val pulse = if (charging) 0.75f + 0.25f * sin(anim[1] * 2 * PI.toFloat() / 1.6f) else 1f
@@ -181,7 +184,7 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
             label(if (x.gridOn) (if (x.gridW > 0) fmtW(x.gridW) else "${x.gridV.toInt()} V") else "Off", Offset(GRID.x, GRID.y - 48), true)
             label(if (x.gridOn) (if (x.gridW > 0) "Grid · in use" else "Grid · standby") else "Grid off", Offset(GRID.x, GRID.y + 46), false)
             label("${x.battPct}%", Offset(BATT.x, BATT.y + 50), true)
-            label(when { x.battW > 8 -> "Charging"; x.battW < -8 -> "Discharging"; x.battPct >= 99 -> "Full"; else -> "Battery" }, Offset(BATT.x, BATT.y - 46), false)
+            label(when (Power.batt(x, idle)) { Power.Batt.Charging -> "Charging"; Power.Batt.Discharging -> "Discharging"; else -> if (x.battPct >= 99) "Full" else "Idle" }, Offset(BATT.x, BATT.y - 46), false)
             label(fmtW(x.loadW), Offset(HOME.x, HOME.y + 50), true)
             label("Home · ${x.loadPct}%", Offset(HOME.x, HOME.y - 46), false)
         }
@@ -189,10 +192,11 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
 }
 
 /** Watts flowing on each line: solar, grid, battery, home (0 = idle). */
-private fun flowWatts(x: Live?, still: Boolean): FloatArray {
+private fun flowWatts(x: Live?, still: Boolean, idleW: Int): FloatArray {
     if (x == null || !x.ok || still) return FloatArray(4)
     fun f(w: Int) = if (kotlin.math.abs(w) >= 8) kotlin.math.abs(w).toFloat() else 0f
-    return floatArrayOf(f(x.pvW), f(x.gridW), f(x.battW), f(x.loadW))
+    val b = if (Power.batt(x, idleW) == Power.Batt.Idle) 0f else kotlin.math.abs(x.battW).toFloat()
+    return floatArrayOf(f(x.pvW), f(x.gridW), b, f(x.loadW))
 }
 
 private fun DrawScope.sunIcon(c: Color, deg: Float) {

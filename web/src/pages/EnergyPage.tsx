@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BillCard } from '../components/BillCard'
+import { BillHistory } from '../components/BillHistory'
 import { BarChart, Legend, useHidden, type Series } from '../components/charts/charts'
 import { Card, CardHeader, ChartCard, Empty, Segmented, Skeleton, Stat, Value } from '../components/ui/ui'
-import { addDays, dayLabel, fmtDuration, fmtPkr, fmtUnits, fmtWh, fromYmd, isoToYmd, ymd, ymdIso } from '../lib/format'
+import { addDays, dayLabel, fmtDuration, fmtUnits, fmtWh, fromYmd, isoToYmd, ymd, ymdIso } from '../lib/format'
 import { fetchDays, useStore } from '../lib/store'
 import type { DayRec } from '../lib/types'
 
@@ -10,7 +11,6 @@ type Range = 'month' | '7' | '30' | 'year' | 'custom'
 
 export default function EnergyPage() {
   const live = useStore((s) => s.live)
-  const tariff = useStore((s) => s.info?.tariff ?? 0)
   const today = live?.today.date || ymd(new Date())
   const [days, setDays] = useState<DayRec[] | null>(null)
   const [range, setRange] = useState<Range>('month')
@@ -89,7 +89,6 @@ export default function EnergyPage() {
           <p className="text-sm font-medium text-text-2">Solar units made this month</p>
           <div className="mt-1 flex flex-wrap items-end gap-x-6 gap-y-2">
             <Value text={`${fmtUnits(mPv)} units`} className="text-5xl tracking-tight sm:text-6xl" unitClass="text-[0.35em]" />
-            {tariff > 0 && <div className="pb-2"><p className="text-xs text-text-3">saved at Rs {tariff}/unit</p><Value text={fmtPkr((mPv / 1000) * tariff)} className="text-2xl text-good" /></div>}
           </div>
           <p className="mt-2 text-sm text-text-2">
             {fromYmd(today).toLocaleDateString(undefined, { month: 'long' })} so far · grid ≈ <span className="num font-semibold text-text">{fmtUnits(mGrid)}</span> units (estimated)
@@ -104,6 +103,7 @@ export default function EnergyPage() {
       </section>
 
       {days && <BillCard byDate={byDate} today={today} />}
+      <BillHistory />
 
       <Card className="flex flex-wrap items-center gap-3 !py-3">
         <Segmented label="Range" value={range} onChange={setRange} className="flex-wrap"
@@ -133,11 +133,11 @@ export default function EnergyPage() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat tone="solar" label="Solar produced" value={fmtWh(tot.pv)} hint={`${fmtUnits(tot.pv)} units`} />
               <Stat tone="load" label="Home used" value={fmtWh(tot.load)} />
-              <Stat tone="grid" label="From grid (est.)" value={fmtWh(tot.grid)} hint={`${fmtUnits(tot.grid)} units`} />
+              <Stat tone="grid" label="From grid (est.)" info="The inverter does not report grid power directly. The monitor works it out from the home load minus what solar and the battery supply, so treat it as a close estimate. Your IESCO meter is the final word." value={fmtWh(tot.grid)} hint={`${fmtUnits(tot.grid)} units`} />
               <Stat tone="batt" label="Battery in / out" value={fmtWh(tot.chg)} hint={`out ${fmtWh(tot.dis)}`} />
               <Stat label="Grid available" value={tot.mon ? `${Math.round((tot.on / tot.mon) * 100)} %` : '–'} hint={tot.mon ? `${fmtDuration(tot.on)} of ${fmtDuration(tot.mon)}` : undefined} />
               <Stat label="Grid outages" value={String(tot.out)} />
-              <Stat label="Saved by solar" value={tariff ? fmtPkr((tot.pv / 1000) * tariff) : '–'} />
+              <Stat tone="batt" label="From solar + battery" value={`${fmtUnits(Math.max(0, tot.load - tot.grid))} units`} />
               <Stat label="Average solar / day" value={fmtWh(tot.pv / have.length)} />
             </div>
           </Card>

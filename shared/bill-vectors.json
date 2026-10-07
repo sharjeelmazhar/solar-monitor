@@ -1,15 +1,138 @@
 {
-  "about": "Test cases for the IESCO bill estimate, checked by both web/src/lib/bill.test.ts and the Android unit tests. Default rates (S.R.O. 279(I)/2026), GST 18 %, duty 1.5 %, PTV Rs 35. Worked out by hand; compare with 0.02 tolerance.",
+  "about": "Test cases for the IESCO bill estimate, checked by both web/src/lib/bill.test.ts and the Android unit tests. Default rates (S.R.O. 279(I)/2026), F.C. surcharge Rs 0.43/unit, GST 18 %, duty 1.5 % (not on the fixed charge), no TV fee. Compare totals with 0.02 tolerance. The last two cases are real IESCO bills (Feb 2026 before fixed charges, Sep 2026 after); \"paper\" is the printed total, which differs by a rupee or two because IESCO rounds each line.",
   "cases": [
-    { "name": "no use, protected", "units": 0, "cfg": {}, "tier": "protected", "energy": 0, "fixed": 200, "total": 271 },
-    { "name": "100 units protected", "units": 100, "cfg": {}, "tier": "protected", "energy": 1054, "fixed": 200, "total": 1530.53 },
-    { "name": "150 protected: previous slab benefit", "units": 150, "cfg": {}, "tier": "protected", "energy": 1704.5, "fixed": 300, "total": 2425.88 },
-    { "name": "200 protected: last protected unit", "units": 200, "cfg": {}, "tier": "protected", "energy": 2355, "fixed": 300, "total": 3203.23 },
-    { "name": "201 protected: billed unprotected, whole month at 201-300 rate", "units": 201, "cfg": {}, "tier": "unprotected", "lost": true, "energy": 6653.1, "fixed": 350, "total": 8398.45 },
-    { "name": "200 unprotected", "units": 200, "cfg": { "st": "u" }, "tier": "unprotected", "energy": 5782, "fixed": 300, "total": 7298.49 },
-    { "name": "201 unprotected", "units": 201, "cfg": { "st": "u" }, "tier": "unprotected", "energy": 6653.1, "fixed": 350, "total": 8398.45 },
-    { "name": "750 unprotected: top slab", "units": 750, "cfg": { "st": "u" }, "tier": "unprotected", "energy": 35400, "fixed": 675, "total": 43134.5 },
-    { "name": "2 kW load with FPA and negative QTA", "units": 150, "cfg": { "kw": 2, "fpa": 1.5, "qta": -1.9857 }, "tier": "protected", "energy": 1704.5, "fixed": 600, "total": 2693.91 },
-    { "name": "fractional units round to the meter's whole units", "units": 99.6, "cfg": {}, "tier": "protected", "energy": 1054, "fixed": 200, "total": 1530.53 }
+    {
+      "name": "no use, protected: fixed charge only",
+      "units": 0,
+      "cfg": {},
+      "tier": "protected",
+      "energy": 0,
+      "fixed": 200,
+      "total": 236
+    },
+    {
+      "name": "100 units protected",
+      "units": 100,
+      "cfg": {},
+      "tier": "protected",
+      "energy": 1054,
+      "fixed": 200,
+      "total": 1549.12
+    },
+    {
+      "name": "150 protected: previous slab benefit",
+      "units": 150,
+      "cfg": {},
+      "tier": "protected",
+      "energy": 1704.5,
+      "fixed": 300,
+      "total": 2471.59
+    },
+    {
+      "name": "200 protected: last protected unit",
+      "units": 200,
+      "cfg": {},
+      "tier": "protected",
+      "energy": 2355,
+      "fixed": 300,
+      "total": 3276.06
+    },
+    {
+      "name": "201 protected: billed unprotected, whole month at 201-300 rate",
+      "units": 201,
+      "cfg": {},
+      "tier": "unprotected",
+      "lost": true,
+      "energy": 6653.1,
+      "fixed": 350,
+      "total": 8483.41
+    },
+    {
+      "name": "200 unprotected",
+      "units": 200,
+      "cfg": {
+        "st": "u"
+      },
+      "tier": "unprotected",
+      "energy": 5782,
+      "fixed": 300,
+      "total": 7380.58
+    },
+    {
+      "name": "201 unprotected",
+      "units": 201,
+      "cfg": {
+        "st": "u"
+      },
+      "tier": "unprotected",
+      "energy": 6653.1,
+      "fixed": 350,
+      "total": 8483.41
+    },
+    {
+      "name": "750 unprotected: top slab",
+      "units": 750,
+      "cfg": {
+        "st": "u"
+      },
+      "tier": "unprotected",
+      "energy": 35400,
+      "fixed": 675,
+      "total": 43575.63
+    },
+    {
+      "name": "2 kW load with FPA and negative QTA",
+      "units": 150,
+      "cfg": {
+        "kw": 2,
+        "fpa": 1.5,
+        "qta": -1.9857
+      },
+      "tier": "protected",
+      "energy": 1704.5,
+      "fixed": 600,
+      "total": 2738.33
+    },
+    {
+      "name": "fractional units round to the meter's whole units",
+      "units": 99.6,
+      "cfg": {},
+      "tier": "protected",
+      "energy": 1054,
+      "fixed": 200,
+      "total": 1549.12
+    },
+    {
+      "name": "real IESCO bill Feb 2026: 71 units, FPA on 152 units of Dec",
+      "units": 71,
+      "fpaUnits": 152,
+      "cfg": {
+        "ps": [
+          [100, 10.54, 0],
+          [200, 13.01, 0]
+        ],
+        "qta": 0.3298,
+        "fpa": 0.2841
+      },
+      "tier": "protected",
+      "energy": 748.34,
+      "fixed": 0,
+      "total": 1012.08,
+      "paper": 1013
+    },
+    {
+      "name": "real IESCO bill Sep 2026: 166 units, Rs 300 fixed, FPA on 181 units of Jul, negative QTA",
+      "units": 166,
+      "fpaUnits": 181,
+      "cfg": {
+        "qta": -1.42,
+        "fpa": 2.0581
+      },
+      "tier": "protected",
+      "energy": 1912.66,
+      "fixed": 300,
+      "total": 2892.86,
+      "paper": 2894
+    }
   ]
 }

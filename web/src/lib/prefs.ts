@@ -71,6 +71,27 @@ export function useClock() {
   return [on, set] as const
 }
 
+// Battery flows under this many watts count as idle (on by default, 100 W).
+type BattIdle = { on: boolean; w: number }
+let battIdle: BattIdle = (() => {
+  try {
+    const v = JSON.parse(read('battIdle') ?? 'null')
+    if (v && typeof v.on === 'boolean' && typeof v.w === 'number') return v
+  } catch { /* default */ }
+  return { on: true, w: 100 }
+})()
+const idleListeners = new Set<() => void>()
+/** [settings, setter, effective threshold in W] */
+export function useBattIdle() {
+  const v = useSyncExternalStore((l) => { idleListeners.add(l); return () => idleListeners.delete(l) }, () => battIdle)
+  const set = (n: BattIdle) => {
+    battIdle = n
+    write('battIdle', JSON.stringify(n))
+    idleListeners.forEach((l) => l())
+  }
+  return [v, set, v.on ? v.w : 15] as const
+}
+
 // shared across components so toggling it in System updates the Live page at once
 let fx3d: boolean | null = null
 const fxListeners = new Set<() => void>()

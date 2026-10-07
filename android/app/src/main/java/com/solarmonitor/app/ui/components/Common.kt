@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -33,11 +34,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.solarmonitor.app.ui.theme.NumberStyle
 
 @Composable
 fun SectionCard(
     title: String?, modifier: Modifier = Modifier, action: (@Composable RowScope.() -> Unit)? = null,
+    info: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
@@ -48,8 +53,12 @@ fun SectionCard(
         Column(Modifier.padding(16.dp).animateContentSize()) {
             if (title != null || action != null) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (title != null) Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    else Spacer(Modifier.weight(1f))
+                    if (title != null) {
+                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                            if (info != null) InfoButton(title, info)
+                        }
+                    } else Spacer(Modifier.weight(1f))
                     action?.invoke(this)
                 }
             }
@@ -92,11 +101,11 @@ fun KpiTile(
             Text(label.uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
         Spacer(Modifier.height(6.dp))
-        if (smallValue) Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (smallValue) Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         else BigValue(value)
         Spacer(Modifier.height(2.dp))
-        Text(line1, style = MaterialTheme.typography.bodySmall.merge(NumberStyle), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(line2, style = MaterialTheme.typography.bodySmall.merge(NumberStyle), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (line1.isNotBlank()) Text(line1, style = MaterialTheme.typography.bodySmall.merge(NumberStyle), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (line2.isNotBlank()) Text(line2, style = MaterialTheme.typography.bodySmall.merge(NumberStyle), color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (progress != null) {
             Spacer(Modifier.height(8.dp))
             Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant)) {
@@ -107,11 +116,31 @@ fun KpiTile(
 }
 
 @Composable
-fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
+fun StatTile(label: String, value: String, modifier: Modifier = Modifier, info: String? = null, hint: String? = null) {
     Column(modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 14.dp, vertical = 11.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(value, style = MaterialTheme.typography.titleLarge.merge(NumberStyle), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f, fill = false))
+            if (info != null) InfoButton(label, info, small = true)
+        }
+        Text(value, style = MaterialTheme.typography.titleLarge.merge(NumberStyle), fontWeight = FontWeight.Bold)
+        if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+/** Small (i) button that explains something in plain language. */
+@Composable
+fun InfoButton(title: String, text: String, small: Boolean = false) {
+    var open by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.compose.material3.IconButton(onClick = { open = true }, modifier = Modifier.size(if (small) 30.dp else 36.dp)) {
+        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Outlined.Info, "More about $title",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(if (small) 16.dp else 19.dp))
+    }
+    if (open) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { open = false },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { open = false }) { Text("OK") } },
+        title = { Text(title) },
+        text = { Text(text, style = MaterialTheme.typography.bodyMedium) },
+    )
 }
 
 /** Lays children out in rows of [columns] equal-width cells. */
@@ -119,8 +148,9 @@ fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
 fun Grid(columns: Int, items: List<@Composable (Modifier) -> Unit>, spacing: Int = 10) {
     Column(verticalArrangement = Arrangement.spacedBy(spacing.dp)) {
         items.chunked(columns).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(spacing.dp), modifier = Modifier.fillMaxWidth()) {
-                row.forEach { it(Modifier.weight(1f)) }
+            // equal height per row, so wrapped text in one tile doesn't leave its neighbours short
+            Row(horizontalArrangement = Arrangement.spacedBy(spacing.dp), modifier = Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                row.forEach { it(Modifier.weight(1f).fillMaxHeight()) }
                 repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }

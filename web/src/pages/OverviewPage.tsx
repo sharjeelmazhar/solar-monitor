@@ -4,8 +4,9 @@ import { Legend, TimeChart, useHidden, type Series } from '../components/charts/
 import { FlowDiagram } from '../components/flow/FlowDiagram'
 import { Card, CardHeader, ChartCard, Segmented, Stat, Value, cn } from '../components/ui/ui'
 import { activeWarnings, modeOf, parseRated, SEVERE, WARNINGS } from '../lib/decode'
-import { fmtDuration, fmtPkr, fmtW, fmtWh, hhmm, hhmmss } from '../lib/format'
-import { use3d } from '../lib/prefs'
+import { fmtDuration, fmtUnits, fmtW, fmtWh, hhmm, hhmmss } from '../lib/format'
+import { use3d, useBattIdle } from '../lib/prefs'
+import { battState, sourcesLabel, sourcesSentence, weakSolar } from '../lib/power'
 import { useStale, useStore } from '../lib/store'
 import type { Info, Live } from '../lib/types'
 
@@ -18,8 +19,9 @@ export default function OverviewPage({ dark }: { dark: boolean }) {
   const ratedW = rated?.outW || 3200
   const [fx3d] = use3d()
   const stale = useStale()
+  const [, , idleW] = useBattIdle()
   const offline = !!d && stale != null
-  const alerts = d?.ever && !offline ? alertsOf(d) : []
+  const alerts = d?.ever && !offline ? alertsOf(d, idleW) : []
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
@@ -27,8 +29,9 @@ export default function OverviewPage({ dark }: { dark: boolean }) {
         <Card className="relative overflow-hidden">
           <CardHeader
             title="Energy flow"
-            sub={d?.ever ? modeOf(d.mode).text : 'Waiting for the inverter…'}
-            action={d?.ever && <span className="rounded-full border border-border-strong bg-surface-2 px-3 py-1 text-xs font-semibold">{modeOf(d.mode).name}</span>}
+            sub={d?.ever ? sourcesSentence(d, idleW) : 'Waiting for the inverter…'}
+            info={<FlowInfo />}
+            action={d?.ever && <span className="rounded-full border border-border-strong bg-surface-2 px-3 py-1 text-xs font-semibold">{sourcesLabel(d, idleW)}</span>}
           />
           <div className="relative mx-auto max-w-[560px]">
             {offline && <OfflineBadge seconds={stale!} t={d!.t} />}
@@ -40,17 +43,17 @@ export default function OverviewPage({ dark }: { dark: boolean }) {
                 </Suspense>
               </div>
             )}
-            <div className="relative"><FlowDiagram d={d} ratedW={ratedW} still={offline} /></div>
+            <div className="relative"><FlowDiagram d={d} ratedW={ratedW} still={offline} idleW={idleW} /></div>
             </div>
           </div>
         </Card>
         <div className={cn('grid transition-[filter,opacity] duration-500', offline && 'opacity-45 grayscale')}>
-          <NowTiles d={d} info={info} battRatedV={rated?.battV} float={rated?.float} />
+          <NowTiles d={d} info={info} battRatedV={rated?.battV} float={rated?.float} idleW={idleW} />
         </div>
       </section>
 
       {alerts.some((a) => a.level > 0) && <Alerts items={alerts.filter((a) => a.level > 0)} />}
-      {d?.ever && <TodayCard d={d} tariff={info?.tariff ?? 0} />}
+      {d?.ever && <TodayCard d={d} />}
       <LiveChart />
     </div>
   )
@@ -72,7 +75,7 @@ function OfflineBadge({ seconds, t }: { seconds: number; t: number }) {
   )
 }
 
-function NowTiles({ d, info, battRatedV, float }: { d: Live | null; info: Info | null; battRatedV?: number; float?: number }) {
+function NowTiles({ d, info, battRatedV, float, idleW }: { d: Live | null; info: Info | null; battRatedV?: number; float?: number; idleW: number }) {
   if (!d?.ever) {
     return (
       <Card className="grid place-items-center text-sm text-text-2">
@@ -82,6 +85,7 @@ function NowTiles({ d, info, battRatedV, float }: { d: Live | null; info: Info |
   }
   const battTone = d.battPct <= 20 ? 'crit' : d.battPct <= 45 ? 'warn' : 'batt'
   const eta = battEta(d, info?.battAh ?? 0, battRatedV)
+  const bs = battState(d, idleW)
   const charging = d.st[6] === '1' && d.st[7] === '1' ? 'Solar + grid' : d.st[6] === '1' ? 'From solar' : d.st[7] === '1' ? 'From grid' : 'Not charging'
   return (
     <Card>
@@ -89,13 +93,13 @@ function NowTiles({ d, info, battRatedV, float }: { d: Live | null; info: Info |
       <div className="grid grid-cols-2 gap-3">
         <Tile tone="solar" label="Solar" value={fmtW(d.pvW)} lines={[`${d.pvV.toFixed(1)} V · ${d.pvA.toFixed(1)} A`, `Peak today ${fmtW(d.today.pvPeak)}`]} />
         <Tile tone="batt" label="Battery" value={`${d.battPct} %`}
-          lines={[`${d.battV.toFixed(2)} V · ${d.battW > 15 ? '+' + fmtW(d.battW) : d.battW < -15 ? '−' + fmtW(-d.battW) : 'idle'}`, eta ?? (info && !info.battAh ? 'Add battery Ah in System' : ' ')]}
+          lines={[`${d.battV.toFixed(2)} V · ${bs === 'charging' ? 'charging ' + fmtW(d.battW) : bs === 'discharging' ? 'giving ' + fmtW(-d.battW) : 'idle'}`, eta ?? (info && !info.battAh ? 'Add battery Ah in System' : ' ')]}
           bar={d.battPct} barTone={battTone} />
         <Tile tone="load" label="Home" value={fmtW(d.loadW)} lines={[`${d.loadPct}% load · ${d.loadVA} VA`, `${d.outV.toFixed(1)} V · ${d.outHz.toFixed(1)} Hz`]} bar={d.loadPct} />
         <Tile tone="grid" label="Grid (WAPDA)" value={d.gridOn ? `${Math.round(d.gridV)} V` : 'Off'}
           lines={d.gridOn ? [`${d.gridHz.toFixed(1)} Hz · available`, d.gridW > 15 ? `Importing ≈ ${fmtW(d.gridW)}` : 'Not in use'] : ['No grid supply', d.today.outages ? `${d.today.outages} outage${d.today.outages > 1 ? 's' : ''} today` : ' ']} />
-        <Tile tone="inv" label="Inverter" value={`${d.tempC} °C`} lines={[modeOf(d.mode).name, `DC bus ${d.busV} V`]} />
-        <Tile tone="text-3" label="Charging" value={charging} small lines={[d.battW > 15 ? `${fmtW(d.battW)} into battery` : ' ', float ? `Float ${float} V` : ' ']} />
+        <Tile tone="inv" label="Inverter" value={`${d.tempC} °C`} lines={[sourcesSentence(d, idleW), `Mode: ${modeOf(d.mode).name} · DC bus ${d.busV} V`]} />
+        <Tile tone="text-3" label="Charging" value={charging} small lines={[bs === 'charging' ? `${fmtW(d.battW)} into battery` : ' ', float ? `Float ${float} V` : ' ']} />
       </div>
     </Card>
   )
@@ -109,7 +113,7 @@ function Tile({ tone, label, value, lines, bar, barTone, small }: { tone: string
         <span className="size-2 rounded-full" style={{ background: `var(--${tone})` }} />
         {label}
       </div>
-      {small ? <div className="mt-1.5 truncate text-lg font-semibold">{value}</div> : <Value text={value} className="mt-1 block truncate text-[26px] leading-tight" />}
+      {small ? <div className="mt-1.5 text-lg font-semibold leading-snug">{value}</div> : <Value text={value} className="mt-1 block text-[26px] leading-tight" />}
       {lines.map((l, i) => <div key={i} className="num text-xs leading-snug text-text-2">{l}</div>)}
       {bar != null && (
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
@@ -133,7 +137,7 @@ function battEta(d: Live, ah: number, ratedV?: number) {
   return null
 }
 
-function TodayCard({ d, tariff }: { d: Live; tariff: number }) {
+function TodayCard({ d }: { d: Live }) {
   const t = d.today
   const self = t.load > 1 ? Math.round(Math.max(0, Math.min(1, 1 - t.grid / t.load)) * 100) : null
   return (
@@ -142,12 +146,12 @@ function TodayCard({ d, tariff }: { d: Live; tariff: number }) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
         <Stat tone="solar" label="Solar produced" value={fmtWh(t.pv)} />
         <Stat tone="load" label="Home used" value={fmtWh(t.load)} />
-        <Stat tone="grid" label="From grid (est.)" value={fmtWh(t.grid)} />
+        <Stat tone="grid" label="From grid (est.)" info="The inverter does not report grid power directly. The monitor works it out from the home load minus what solar and the battery supply, so treat it as a close estimate. Your IESCO meter is the final word." value={fmtWh(t.grid)} />
         <Stat tone="batt" label="Battery in / out" value={`${fmtWh(t.chg)}`} hint={`out ${fmtWh(t.dis)}`} />
-        <Stat label="Self-powered" value={self == null ? '–' : `${self} %`} />
+        <Stat label="Self-powered" info="Share of the home's energy today that did not come from the grid (solar and battery)." value={self == null ? '–' : `${self} %`} />
         <Stat label="Grid available" value={t.onlineMin ? fmtDuration(t.gridOnMin) : '–'} />
         <Stat label="Grid outages" value={String(t.outages)} />
-        <Stat label="Saved by solar" value={tariff ? fmtPkr((t.pv / 1000) * tariff) : '–'} hint={tariff ? undefined : 'set price in System'} />
+        <Stat tone="batt" label="From solar + battery" value={`${fmtUnits(Math.max(0, t.load - t.grid))} units`} hint="home use not from the grid" />
       </div>
     </Card>
   )
@@ -186,14 +190,15 @@ function LiveChart() {
 
 export interface AlertItem { level: 0 | 1 | 2; text: string }
 
-export function alertsOf(d: Live): AlertItem[] {
+export function alertsOf(d: Live, idleW = 15): AlertItem[] {
   const out: AlertItem[] = []
   if (!d.ok) out.push({ level: 2, text: `No fresh data from the inverter: ${d.poll.err || 'unknown reason'}` })
   if (d.mode === 'F') out.push({ level: 2, text: 'Inverter is in FAULT mode' })
   for (const i of activeWarnings(d.warn)) out.push({ level: SEVERE.has(i) ? 2 : 1, text: WARNINGS[i] })
   if (d.ok && d.battPct <= 20 && d.battW < 0) out.push({ level: 1, text: `Battery is low (${d.battPct}%)` })
   if (d.tempC >= 60) out.push({ level: 1, text: `Inverter is hot (${d.tempC} °C)` })
-  if (!d.gridOn) out.push({ level: 0, text: 'Grid supply is off: running on solar and battery' })
+  if (weakSolar(d, idleW)) out.push({ level: 1, text: `Little sun right now (cloudy?) and the battery is powering the home (${fmtW(-d.battW)}, battery ${d.battPct}%). Turn the grid on to save the battery.` })
+  else if (!d.gridOn) out.push({ level: 0, text: 'Grid supply is off: running on solar and battery' })
   return out
 }
 
@@ -216,5 +221,15 @@ export function Alerts({ items }: { items: AlertItem[] }) {
         })}
       </div>
     </Card>
+  )
+}
+
+function FlowInfo() {
+  return (
+    <>
+      <p>Dots move in the direction energy flows, faster and denser with more power. The label on the right says what is powering the home right now.</p>
+      <p><b>Battery idle:</b> at full charge the inverter often draws a little from the battery even when solar covers the home. Flows under the limit set in System (100 W by default) are shown as idle.</p>
+      <p><b>Grid (est.):</b> the inverter does not measure grid power directly; it is worked out from the home load and what solar and the battery supply.</p>
+    </>
   )
 }

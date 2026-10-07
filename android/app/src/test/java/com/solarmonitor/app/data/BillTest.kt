@@ -19,15 +19,16 @@ class BillTest {
             val v = cases.getJSONObject(i)
             val cfg = JSONObject(base.toString())
             v.getJSONObject("cfg").let { o -> o.keys().forEach { cfg.put(it, o.get(it)) } }
-            val b = BillCalc.compute(v.getDouble("units"), BillConfig.parse(cfg.toString()))
+            val b = BillCalc.compute(v.getDouble("units"), BillConfig.parse(cfg.toString()), if (v.has("fpaUnits")) v.getDouble("fpaUnits") else null)
             val name = v.getString("name")
             assertEquals(name, v.getString("tier") == "protected", b.protectedTier)
             assertEquals(name, v.optBoolean("lost", false), b.lostProtection)
             assertEquals(name, v.getDouble("energy"), b.energy, 0.05)
             assertEquals(name, v.getDouble("fixed"), b.fixed, 0.05)
             assertEquals(name, v.getDouble("total"), b.total, 0.02)
+            if (v.has("paper")) assertEquals(name, v.getDouble("paper"), b.total, 2.0)   // IESCO rounds each line
         }
-        assertTrue(cases.length() >= 10)
+        assertTrue(cases.length() >= 12)
     }
 
     @Test fun parseFallsBackToDefaults() {
@@ -35,7 +36,9 @@ class BillTest {
         assertEquals(BillConfig(), BillConfig.parse("not json"))
         assertEquals(BillConfig.DEFAULT_PS, BillConfig.parse("""{"ps":[[1,2]]}""").ps)
         assertEquals(100.0, BillConfig.parse("""{"gst":500}""").gst, 0.0)
-        val c = BillConfig(protected = false, kw = 2.5, fpa = -1.2)
+        assertEquals(listOf(PastBill(202601, 113, 1567), PastBill(202602, 70, 1)),
+            BillConfig.parse("""{"hist":[[202602,71,1013],[202513,1,1],[202601,113,1567],[202602,70,1]]}""").hist)
+        val c = BillConfig(protected = false, kw = 2.5, fpa = -1.2, hist = listOf(PastBill(202602, 71, 1013)))
         assertEquals(c, BillConfig.parse(c.toJson()))
     }
 
@@ -47,6 +50,21 @@ class BillTest {
         assertEquals(20260915, BillCalc.cycleStart(20261007, 15))
         assertEquals(20251210, BillCalc.cycleStart(20260105, 10))
         assertEquals(20260110, BillCalc.nextCycle(20251210))
+        assertEquals(202602, BillCalc.billMonth(20260108))
+        assertEquals(202611, BillCalc.billMonth(20261001))
+        assertEquals(202512, BillCalc.addMonths(202602, -2))
+        assertEquals(202602, BillCalc.addMonths(202511, 3))
+    }
+
+    @Test fun unitAlertSteps() {
+        val c = BillConfig()
+        assertNull(BillCalc.unitAlert(100.0, 150.0, c))
+        assertEquals(150, BillCalc.unitAlert(150.0, 180.0, c)?.key)
+        assertEquals(-1, BillCalc.unitAlert(120.0, 260.0, c)?.key)
+        assertEquals(175, BillCalc.unitAlert(185.0, 190.0, c)?.key)
+        assertEquals(190, BillCalc.unitAlert(191.0, 199.0, c)?.key)
+        assertEquals(2, BillCalc.unitAlert(199.0, 199.0, c)?.level)
+        assertEquals(200, BillCalc.unitAlert(201.0, 230.0, c)?.key)
     }
 }
 
@@ -80,5 +98,17 @@ class OutagesTest {
         assertEquals(10.0, h.gridWh, 1e-6)
         assertEquals(10 + 400 / 60.0, h.battWh, 1e-6)
         assertEquals(10 + 200 / 60.0, h.solarWh, 1e-6)
+    }
+}
+
+class InsightsTest {
+    @Test fun summarisesAYearOfBills() {
+        val h = listOf(202509 to 183, 202510 to 173, 202511 to 119, 202512 to 152, 202601 to 113, 202602 to 71, 202603 to 74, 202604 to 95, 202605 to 99, 202606 to 170, 202607 to 181, 202608 to 180, 202609 to 166)
+        val amounts = listOf(2235, 2097, 1427, 2164, 1567, 1013, 1425, 1644, 1578, 2894, 2579, 2678, 2894)
+        val t = BillCalc.insights(h.mapIndexed { i, (m, u) -> PastBill(m, u, amounts[i]) }).joinToString(" | ") { it.text }
+        assertTrue(t, "stayed at or under 200" in t)
+        assertTrue(t, "close calls" in t)
+        assertTrue(t, "Sep 26: 166 units vs 183 a year ago (-17, -9%)" in t)
+        assertTrue(t, "Highest: Jul 26 with 181 units" in t)
     }
 }

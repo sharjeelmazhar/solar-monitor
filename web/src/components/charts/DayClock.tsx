@@ -198,38 +198,60 @@ function CenterText({ sel, mix, outs, offTotal, now }: { sel: Sel; mix: HourMix[
   )
 }
 
+/** One fact per line, each with the colour it has on the clock. */
 function Details({ sel, mix, outs, recs, onClear, pinned }: { sel: Sel; mix: HourMix[]; outs: Outage[]; recs: MinRec[]; onClear: () => void; pinned: boolean }) {
-  let body: React.ReactNode = <span className="text-text-3">Tap an hour or a red part of the ring to see what happened then.</span>
+  let head: React.ReactNode = null
+  let items: { color: string; hatch?: boolean; text: React.ReactNode }[] = []
   if (sel?.kind === 'hour') {
     const h = mix[sel.h]
     const total = h.solar + h.batt + h.grid
     const pct = (v: number) => (total > 0 ? Math.round((v / total) * 100) : 0)
     const inHour = outs.filter((o) => new Date(o.start).getHours() <= sel.h && new Date(o.end - 1).getHours() >= sel.h)
-    body = (
-      <>
-        <b className="font-semibold">{hourLabel(sel.h)} – {hourLabel(sel.h + 1)}</b>
-        {h.minutes ? (
-          <>: home used <b className="num">{fmtWh(total)}</b> — solar {pct(h.solar)}%, battery {pct(h.batt)}%, grid {pct(h.grid)}%. Solar made {fmtWh(h.pv)}.
-            {inHour.length > 0 && <> Grid was off {inHour.map((o) => `${hhmm(o.start)} – ${o.ongoing ? 'now' : hhmm(o.end)}`).join(', ')}.</>}
-            {h.minutes < 55 && <span className="text-text-3"> (monitor saw {h.minutes} of 60 minutes)</span>}
-          </>
-        ) : ': the monitor has no data for this hour.'}
-      </>
-    )
+    head = <>{hourLabel(sel.h)} – {hourLabel(sel.h + 1)}{h.minutes ? <> · home used <span className="num">{fmtWh(total)}</span></> : null}</>
+    if (!h.minutes) items = [{ color: 'var(--text-3)', text: 'The monitor has no data for this hour.' }]
+    else {
+      items = [
+        { color: 'var(--solar)', text: <>Solar: <b className="num">{pct(h.solar)}%</b> of home use ({fmtWh(h.solar)}) · made {fmtWh(h.pv)} in total</> },
+        { color: 'var(--batt)', text: <>Battery: <b className="num">{pct(h.batt)}%</b> ({fmtWh(h.batt)})</> },
+        { color: 'var(--grid)', text: <>Grid: <b className="num">{pct(h.grid)}%</b> ({fmtWh(h.grid)})</> },
+        ...inHour.map((o) => ({ color: 'var(--crit)', hatch: true, text: <>Grid off <b className="num">{hhmm(o.start)} – {o.ongoing ? 'now' : hhmm(o.end)}</b> ({fmtDuration(o.minutes)})</> })),
+      ]
+      if (h.minutes < 55) items.push({ color: 'var(--text-3)', text: `The monitor saw ${h.minutes} of 60 minutes` })
+    }
   } else if (sel?.kind === 'out') {
     const o = outs[sel.i]
     const d = duringOutage(recs, o)
-    body = (
-      <>
-        <b className="font-semibold">Grid off {o.startKnown ? `at ${hhmm(o.start)}` : `before ${hhmm(o.start)}`}</b>, {o.ongoing ? 'still off' : o.endKnown ? `back at ${hhmm(o.end)}` : 'monitor went offline before it came back'} · <b className="num">{fmtDuration(o.minutes)}</b>
-        {d && <>. During it the home used {fmtWh(d.homeWh)}{d.solarWh > 1 ? `, solar made ${fmtWh(d.solarWh)}` : ''}; battery {d.socFrom}% → {d.socTo}%.</>}
-      </>
-    )
+    head = <>Grid off · <span className="num">{fmtDuration(o.minutes)}</span></>
+    items = [
+      { color: 'var(--crit)', hatch: true, text: <>Went off {o.startKnown ? 'at' : 'before'} <b className="num">{hhmm(o.start)}</b></> },
+      { color: o.ongoing ? 'var(--text-3)' : 'var(--grid)', text: o.ongoing ? 'Still off' : o.endKnown ? <>Came back at <b className="num">{hhmm(o.end)}</b></> : 'The monitor went offline before it came back' },
+    ]
+    if (d) {
+      items.push({ color: 'var(--load)', text: <>Home used <b className="num">{fmtWh(d.homeWh)}</b> during it</> })
+      if (d.solarWh > 1) items.push({ color: 'var(--solar)', text: <>Solar made <b className="num">{fmtWh(d.solarWh)}</b></> })
+      items.push({ color: 'var(--batt)', text: <>Battery <b className="num">{d.socFrom}% → {d.socTo}%</b></> })
+    }
   }
   return (
-    <div className="flex min-h-12 items-center gap-3 rounded-2xl bg-surface-2 px-4 py-2.5 text-sm leading-relaxed" aria-live="polite">
-      <div className="min-w-0 flex-1">{body}</div>
-      {pinned && <button onClick={onClear} className="focus-ring shrink-0 rounded-xl px-2 py-1 text-xs text-text-2 hover:bg-surface-3">Clear</button>}
+    <div className="min-h-12 rounded-2xl bg-surface-2 px-4 py-3 text-sm" aria-live="polite">
+      {!sel ? (
+        <span className="text-text-3">Tap an hour or a red part of the ring to see what happened then.</span>
+      ) : (
+        <>
+          <div className="mb-1.5 flex items-center gap-2">
+            <b className="flex-1 font-semibold">{head}</b>
+            {pinned && <button onClick={onClear} className="focus-ring shrink-0 rounded-xl px-2 py-1 text-xs text-text-2 hover:bg-surface-3">Clear</button>}
+          </div>
+          <ul className="grid gap-1">
+            {items.map((it, i) => (
+              <li key={i} className="flex items-start gap-2.5 leading-relaxed">
+                <span className="mt-[0.45em] size-2.5 shrink-0 rounded-full" style={{ background: it.hatch ? `repeating-linear-gradient(45deg, ${it.color} 0 2px, transparent 2px 4px)` : it.color, boxShadow: it.hatch ? `inset 0 0 0 1px ${it.color}` : undefined }} />
+                <span className="text-text-2 [&_b]:font-semibold [&_b]:text-text">{it.text}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   )
 }

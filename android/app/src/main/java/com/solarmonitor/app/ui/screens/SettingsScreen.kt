@@ -67,7 +67,6 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
     var searching by remember { mutableStateOf(false) }
     var name by remember(info?.name) { mutableStateOf(info?.name?.takeIf { it != "Solar" } ?: "") }
     var ah by remember(info?.battAh) { mutableStateOf(info?.battAh?.takeIf { it > 0 }?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "") }
-    var tariff by remember(info?.tariff) { mutableStateOf(info?.tariff?.takeIf { it > 0 }?.toString() ?: "") }
     var saving by remember { mutableStateOf(false) }
 
     val pm = ctx.getSystemService(PowerManager::class.java)
@@ -137,6 +136,10 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
                 }
                 Toggle("Battery full", "When the battery reaches 100%", s.alertBattFull) { on -> repo.prefs.update { it.copy(alertBattFull = on) } }
                 Toggle("Inverter problems", "Faults, warnings, inverter not answering", s.alertFault) { on -> repo.prefs.update { it.copy(alertFault = on) } }
+                Toggle("Little sun, battery in use", "Daytime, grid off and the battery is running the home (cloudy?): suggests turning the grid on", s.alertWeakSolar) { on -> repo.prefs.update { it.copy(alertWeakSolar = on) } }
+                Toggle("Monthly units", "At 150, 175 and 190 grid units, and early if the month is heading over 200", s.alertUnits) { on -> repo.prefs.update { it.copy(alertUnits = on) } }
+                Text("Only one notification is shown at a time: the latest alert replaces the status line, and during a grid cut it shows a running timer.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
             }
         }
         item(key = "device") {
@@ -145,15 +148,13 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
                 Spacer(Modifier.padding(4.dp))
                 OutlinedTextField(name, { name = it }, label = { Text("Name") }, placeholder = { Text("Solar") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(ah, { ah = it }, label = { Text("Battery (Ah)") }, singleLine = true, modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                    OutlinedTextField(tariff, { tariff = it }, label = { Text("Quick price Rs/unit") }, singleLine = true, modifier = Modifier.weight(1f),
+                    OutlinedTextField(ah, { ah = it }, label = { Text("Battery capacity (Ah)") }, singleLine = true, modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 }
                 Button(onClick = {
                     saving = true
                     scope.launch {
-                        val ok = repo.saveDeviceSettings(name, ah.toDoubleOrNull() ?: 0.0, tariff.toDoubleOrNull() ?: 0.0)
+                        val ok = repo.saveDeviceSettings(name, ah.toDoubleOrNull() ?: 0.0, info?.tariff ?: 0.0)
                         saving = false
                         toast(if (ok) "Saved to monitor" else "Couldn't reach the monitor")
                     }
@@ -166,6 +167,16 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     listOf("System", "Light", "Dark").forEachIndexed { i, l ->
                         SegmentedButton(selected = s.theme == i, onClick = { repo.prefs.update { it.copy(theme = i) } }, shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                    }
+                }
+                Spacer(Modifier.padding(4.dp))
+                Toggle("3D energy core", "Animated core behind the power flow on the Live tab", s.fx3d) { on -> repo.prefs.update { it.copy(fx3d = on) } }
+                Toggle("Ignore small battery flows", "At full charge the inverter often takes a little from the battery. Below the limit it shows as idle, not charging or discharging.", s.battIdleOn) { on -> repo.prefs.update { it.copy(battIdleOn = on) } }
+                if (s.battIdleOn) {
+                    var w by remember(s.battIdleW) { mutableStateOf(s.battIdleW.toFloat()) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Slider(w, { w = it }, valueRange = 20f..300f, steps = 27, onValueChangeFinished = { repo.prefs.update { it.copy(battIdleW = w.toInt()) } }, modifier = Modifier.weight(1f))
+                        Text("${w.toInt()} W", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 12.dp))
                     }
                 }
                 Spacer(Modifier.padding(6.dp))

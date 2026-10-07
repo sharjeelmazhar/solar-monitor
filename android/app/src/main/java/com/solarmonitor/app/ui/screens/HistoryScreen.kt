@@ -217,6 +217,7 @@ fun EnergyScreen(repo: Repository, padding: PaddingValues) {
             if (days != null && t != null && t.date > 0) BillCard(map, t.date, bill ?: BillConfig())
             else SectionCard("Electricity bill estimate") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         }
+        item(key = "bills") { BillHistory(bill ?: BillConfig()) }
         item(key = "range") {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 listOf(0 to "Month", 7 to "7 days", 30 to "30 days", 365 to "Year").forEachIndexed { i, (n, l) ->
@@ -243,15 +244,14 @@ fun EnergyScreen(repo: Repository, padding: PaddingValues) {
             val have = rows.filterNotNull()
             val pv = have.sumOf { it.pvWh.toDouble() }; val load = have.sumOf { it.loadWh.toDouble() }; val grid = have.sumOf { it.gridWh.toDouble() }
             val on = have.sumOf { it.gridOnMin }; val mins = have.sumOf { it.onlineMin }; val outages = have.sumOf { it.outages }
-            val tariff = info?.tariff ?: 0.0
             SectionCard("${have.size} day${if (have.size == 1) "" else "s"} total") {
                 Grid(2, listOf(
                     { m -> StatTile("Solar produced", fmtWh(pv), m) }, { m -> StatTile("Home used", fmtWh(load), m) },
-                    { m -> StatTile("From grid (est.)", fmtWh(grid), m) },
+                    { m -> StatTile("From grid (est.)", fmtWh(grid), m, info = GRID_EST_INFO) },
                     { m -> StatTile("Self-powered", if (load > 0) "${((1 - grid / load).coerceIn(0.0, 1.0) * 100).roundToInt()}%" else "–", m) },
                     { m -> StatTile("Grid available", if (mins > 0) "${(on * 100.0 / mins).roundToInt()}% of time" else "–", m) },
                     { m -> StatTile("Grid outages", "$outages", m) },
-                    { m -> StatTile("Saved (solar)", if (tariff > 0) "Rs " + String.format(Locale.US, "%,d", (pv / 1000 * tariff).roundToInt()) else "Set price", m) },
+                    { m -> StatTile("From solar + battery", String.format(Locale.US, "%.1f units", maxOf(0.0, load - grid) / 1000), m) },
                     { m -> StatTile("Avg solar / day", if (have.isNotEmpty()) fmtWh(pv / have.size) else "–", m) },
                 ))
             }

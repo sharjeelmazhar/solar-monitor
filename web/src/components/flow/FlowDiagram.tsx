@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
 import { fmtW } from '../../lib/format'
+import { battState } from '../../lib/power'
 import type { Live } from '../../lib/types'
 import { BatteryIcon, GridIcon, GridOffMark, HomeIcon, InverterIcon, SolarIcon } from '../icons/EnergyIcons'
 
@@ -19,23 +20,24 @@ const MAX_DOTS = 7
 interface Flow { w: number; reverse: boolean }
 
 /** Watts and direction on each line. Paths run solar→inv, grid→inv, batt→inv, inv→home. */
-export function flowsOf(d: Live | null): Record<Key, Flow> {
+export function flowsOf(d: Live | null, idleW = DEADBAND): Record<Key, Flow> {
   const z = { w: 0, reverse: false }
   if (!d || !d.ok) return { solar: z, grid: z, batt: z, home: z }
-  const f = (w: number, reverseWhenNegative: boolean): Flow =>
-    Math.abs(w) < DEADBAND ? z : { w: Math.abs(w), reverse: reverseWhenNegative ? w < 0 : false }
+  const f = (w: number, reverseWhenNegative: boolean, band = DEADBAND): Flow =>
+    Math.abs(w) < band ? z : { w: Math.abs(w), reverse: reverseWhenNegative ? w < 0 : false }
   return {
     solar: f(d.pvW, false),
     grid: f(d.gridW, true), // negative would mean exporting
-    batt: f(-d.battW, true), // battW < 0 = discharging = battery → inverter (forward)
+    batt: f(-d.battW, true, Math.max(DEADBAND, idleW)), // battW < 0 = discharging = battery → inverter (forward)
     home: f(d.loadW, false),
   }
 }
 
 /** still: the monitor stopped answering, so nothing moves (the last values stay visible). */
-export function FlowDiagram({ d, ratedW, still = false }: { d: Live | null; ratedW: number; still?: boolean }) {
+export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND }: { d: Live | null; ratedW: number; still?: boolean; idleW?: number }) {
   const uid = useId().replace(/:/g, '')
-  const flows = flowsOf(still ? null : d)
+  const flows = flowsOf(still ? null : d, idleW)
+  const bs = d ? battState(d, idleW) : 'idle'
   const live = useRef({ flows, ratedW })
   live.current = { flows, ratedW }
   const svgRef = useRef<SVGSVGElement>(null)
@@ -104,7 +106,7 @@ export function FlowDiagram({ d, ratedW, still = false }: { d: Live | null; rate
   const ok = !!d?.ok && !still
   const solarFrac = d ? Math.min(1, d.pvW / ratedW) : 0
   const label = d?.ever
-    ? `Solar ${fmtW(d.pvW)}, home ${fmtW(d.loadW)}, battery ${d.battPct} percent ${d.battW > DEADBAND ? 'charging' : d.battW < -DEADBAND ? 'discharging' : 'idle'}, grid ${d.gridOn ? 'on' : 'off'}`
+    ? `Solar ${fmtW(d.pvW)}, home ${fmtW(d.loadW)}, battery ${d.battPct} percent ${bs}, grid ${d.gridOn ? 'on' : 'off'}`
     : 'Power flow, waiting for data'
 
   const node = (k: 'solar' | 'grid' | 'batt' | 'home' | 'inv', active: boolean, color: string, r: number) => (
@@ -156,7 +158,7 @@ export function FlowDiagram({ d, ratedW, still = false }: { d: Live | null; rate
       </g>
 
       {node('batt', ok && flows.batt.w > 0, 'var(--batt)', 32)}
-      <g transform={`translate(${P.batt[0]} ${P.batt[1]})`}><BatteryIcon pct={d?.battPct ?? 0} charging={ok && (d?.battW ?? 0) > DEADBAND} /></g>
+      <g transform={`translate(${P.batt[0]} ${P.batt[1]})`}><BatteryIcon pct={d?.battPct ?? 0} charging={ok && bs === 'charging'} /></g>
 
       {node('home', ok && flows.home.w > 0, 'var(--load)', 32)}
       <g transform={`translate(${P.home[0]} ${P.home[1]})`}><HomeIcon id={`${uid}-home`} frac={d ? Math.max(d.loadW > 0 ? 0.06 : 0, d.loadPct / 100) : 0} /></g>
@@ -164,8 +166,8 @@ export function FlowDiagram({ d, ratedW, still = false }: { d: Live | null; rate
       {d?.ever && (
         <g className="num" textAnchor="middle">
           <NodeText x={72} y={80 - 50} big={fmtW(d.pvW)} small="Solar" smallBelow={80 + 50} />
-          <NodeText x={328} y={80 - 50} big={d.gridOn ? (d.gridW > DEADBAND ? fmtW(d.gridW) : `${Math.round(d.gridV)} V`) : 'Off'} small={d.gridOn ? (d.gridW > DEADBAND ? 'Grid · importing' : 'Grid · standby') : 'Grid off'} smallBelow={80 + 50} />
-          <NodeText x={72} y={230 + 58} big={`${d.battPct}%`} small={d.battW > DEADBAND ? `Charging ${fmtW(d.battW)}` : d.battW < -DEADBAND ? `Discharging ${fmtW(-d.battW)}` : d.battPct >= 99 ? 'Full · idle' : 'Idle'} smallBelow={230 - 46} />
+          <NodeText x={328} y={80 - 50} big={d.gridOn ? (d.gridW > DEADBAND ? fmtW(d.gridW) : `${Math.round(d.gridV)} V`) : 'Off'} small={d.gridOn ? (d.gridW > DEADBAND ? 'Grid · in use' : 'Grid · standby') : 'Grid off'} smallBelow={80 + 50} />
+          <NodeText x={72} y={230 + 58} big={`${d.battPct}%`} small={bs === 'charging' ? `Charging ${fmtW(d.battW)}` : bs === 'discharging' ? `Discharging ${fmtW(-d.battW)}` : d.battPct >= 99 ? 'Full' : 'Idle'} smallBelow={230 - 46} />
           <NodeText x={328} y={230 + 58} big={fmtW(d.loadW)} small={`Home · ${d.loadPct}%`} smallBelow={230 - 46} />
         </g>
       )}

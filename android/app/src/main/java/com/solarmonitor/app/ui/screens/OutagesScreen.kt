@@ -149,7 +149,7 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
 
         item(key = "clock") {
             val idx = days.indexOf(clockDay)
-            SectionCard(if (clockDay == today) "Today" else dayLabel(clockDay), action = {
+            SectionCard(if (clockDay == today) "Today" else dayLabel(clockDay), info = "Each slice is one hour. Its colours show what powered the home: yellow solar, green battery, pink grid. Longer slices mean more energy used.\n\nThe outer ring shows the grid: pink when available, red stripes when it was off. Tap a slice or a red part for details.", action = {
                 FilledTonalIconButton(onClick = { clockDay = days[idx + 1] }, enabled = idx >= 0 && idx < days.size - 1) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous day") }
                 Spacer(Modifier.width(6.dp))
                 FilledTonalIconButton(onClick = { clockDay = days[idx - 1] }, enabled = idx > 0) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next day") }
@@ -234,11 +234,12 @@ private fun EventCard(o: Outage, recs: List<MinRec>, onClick: () -> Unit) {
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).clickable(onClick = onClick).padding(14.dp),
     ) {
         Column(Modifier.weight(1f)) {
-            Line(e.crit, "Went off", if (o.startKnown) hhmm(o.start) else "before ${hhmm(o.start)}", if (o.startKnown) null else "already off when the monitor started")
-            Box(Modifier.padding(start = 5.dp).width(2.dp).height(12.dp).background(e.crit.copy(alpha = 0.4f)))
+            // newest event on top, like the list itself
             Line(if (o.ongoing) MaterialTheme.colorScheme.outline else e.grid, if (o.ongoing) "Still off" else "Came back",
-                if (o.ongoing) "—" else if (o.endKnown) hhmm(o.end) + (if (nextDay) " (next day)" else "") else "unknown",
+                if (o.ongoing) "${fmtDuration((System.currentTimeMillis() - o.start) / 60_000.0)} so far" else if (o.endKnown) hhmm(o.end) + (if (nextDay) " (next day)" else "") else "unknown",
                 if (!o.ongoing && !o.endKnown) "monitor was offline after ${hhmm(o.end)}" else null)
+            Box(Modifier.padding(start = 5.dp).width(2.dp).height(12.dp).background(e.crit.copy(alpha = 0.4f)))
+            Line(e.crit, "Went off", if (o.startKnown) hhmm(o.start) else "before ${hhmm(o.start)}", if (o.startKnown) null else "already off when the monitor started")
             d?.let {
                 Text("Home used ${fmtWh(it.homeWh)}" + (if (it.solarWh > 1) " · solar made ${fmtWh(it.solarWh)}" else "") + " · battery ${it.socFrom}% → ${it.socTo}%",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))

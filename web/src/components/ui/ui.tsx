@@ -1,7 +1,7 @@
 import { Dialog } from '@base-ui/react/dialog'
 import { Switch as BaseSwitch } from '@base-ui/react/switch'
 import { clsx, type ClassValue } from 'clsx'
-import { Maximize2, X } from 'lucide-react'
+import { Info, Maximize2, X } from 'lucide-react'
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { twMerge } from 'tailwind-merge'
@@ -17,13 +17,16 @@ export function Card({ className, children, ...rest }: React.HTMLAttributes<HTML
   )
 }
 
-export function CardHeader({ title, sub, action, icon }: { title: ReactNode; sub?: ReactNode; action?: ReactNode; icon?: ReactNode }) {
+export function CardHeader({ title, sub, action, icon, info }: { title: ReactNode; sub?: ReactNode; action?: ReactNode; icon?: ReactNode; info?: ReactNode }) {
   return (
     <div className="mb-3 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2">
       {icon && <span className="text-text-2">{icon}</span>}
       <div className="min-w-0 flex-1">
-        <h2 className="truncate text-[15px] font-semibold tracking-tight">{title}</h2>
-        {sub && <p className="truncate text-xs text-text-3">{sub}</p>}
+        <h2 className="flex items-center gap-1 text-[15px] font-semibold tracking-tight">
+          <span className="min-w-0 break-words">{title}</span>
+          {info && <InfoButton title={title}>{info}</InfoButton>}
+        </h2>
+        {sub && <p className="text-xs text-text-3">{sub}</p>}
       </div>
       {action}
     </div>
@@ -169,15 +172,16 @@ export function ChartCard({ title, sub, action, legend, render, height = 240, cl
   )
 }
 
-export function Stat({ label, value, hint, className, tone }: { label: string; value: string; hint?: string; className?: string; tone?: string }) {
+export function Stat({ label, value, hint, className, tone, info }: { label: string; value: string; hint?: string; className?: string; tone?: string; info?: ReactNode }) {
   return (
     <div className={cn('min-w-0 rounded-2xl bg-surface-2 px-4 py-3', className)}>
       <div className="flex items-center gap-2 text-xs font-medium text-text-2">
-        {tone && <span className="size-2 rounded-full" style={{ background: `var(--${tone})` }} />}
-        <span className="truncate">{label}</span>
+        {tone && <span className="size-2 shrink-0 rounded-full" style={{ background: `var(--${tone})` }} />}
+        <span className="min-w-0 break-words">{label}</span>
+        {info && <InfoButton title={label} small>{info}</InfoButton>}
       </div>
-      <Value text={value} className="mt-1 block truncate text-xl" />
-      {hint && <div className="mt-0.5 truncate text-xs text-text-3">{hint}</div>}
+      <Value text={value} className="mt-1 block break-words text-xl" />
+      {hint && <div className="mt-0.5 text-xs text-text-3">{hint}</div>}
     </div>
   )
 }
@@ -188,4 +192,20 @@ export function Empty({ children }: { children: ReactNode }) {
 
 export function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />
+}
+
+/** Small (i) button that explains something in plain language. */
+export function InfoButton({ title, children, small }: { title: ReactNode; children: ReactNode; small?: boolean }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button type="button" onClick={(e) => { e.stopPropagation(); setOpen(true) }} aria-label="More information"
+        className={cn('focus-ring -m-1 inline-grid shrink-0 place-items-center rounded-full text-text-3 hover:bg-surface-3 hover:text-text', small ? 'size-7' : 'size-8')}>
+        <Info size={small ? 14 : 16} />
+      </button>
+      <Modal open={open} onOpenChange={setOpen} title={title}>
+        <div className="grid gap-3 text-sm leading-relaxed text-text-2 [&_b]:font-semibold [&_b]:text-text">{children}</div>
+      </Modal>
+    </>
+  )
 }

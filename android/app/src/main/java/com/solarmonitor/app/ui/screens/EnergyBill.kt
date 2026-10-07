@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.GppBad
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.HorizontalDivider
@@ -49,6 +51,7 @@ import com.solarmonitor.app.ui.dayLabel
 import com.solarmonitor.app.ui.theme.LocalEnergy
 import com.solarmonitor.app.ui.theme.NumberStyle
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.max
@@ -56,6 +59,14 @@ import kotlin.math.roundToInt
 
 fun rs(v: Double) = "Rs " + String.format(Locale.US, "%,d", v.roundToInt())
 private fun short(ymd: Int) = dateOf(ymd).format(DateTimeFormatter.ofPattern("d MMM"))
+fun monthName(ym: Int, pattern: String = "MMM yy"): String = YearMonth.of(ym / 100, ym % 100).format(DateTimeFormatter.ofPattern(pattern))
+private fun n(v: Double) = if (v % 1.0 == 0.0) v.toInt().toString() else v.toString()
+
+private const val BILL_INFO = "Protected homes used 200 units or less in each of the last 6 months and pay the lowest rates. Going over 200 even once bills that whole month at the unprotected rate and removes the status for the next 6 months.\n\n" +
+    "Unprotected homes pay the rate of the slab they reach on every unit, so 201 units cost much more than 200.\n\n" +
+    "Grid units are worked out by the monitor from the inverter. Your meter also counts anything not wired through this inverter: add that as \"Other units\" in Settings → Bill.\n\n" +
+    "You get a notification at 150, 175 and 190 units, and early if the month is heading over 200.\n\n" +
+    "Rates: NEPRA S.R.O. 279(I)/2026 (12 Feb 2026). Each line is calculated the way a real IESCO bill does it."
 
 /** Expected IESCO bill for this billing month, with advice about the protected limit. Same logic as the web card. */
 @Composable
@@ -63,32 +74,31 @@ fun BillCard(byDate: Map<Int, DayRec>, today: Int, cfg: BillConfig) {
     val e = LocalEnergy.current
     var open by rememberSaveable { mutableStateOf(false) }
     val nowT = LocalTime.now()
-    val m = BillCalc.monthUse(byDate, today, cfg, (nowT.hour * 60 + nowT.minute) / 1440.0)
-    val bill = BillCalc.compute(m.projected, cfg)
+    val now = BillCalc.now(byDate, today, cfg, (nowT.hour * 60 + nowT.minute) / 1440.0)
+    val m = now.m
+    val bill = now.bill
     val limit = cfg.limit
     val left = m.totalDays - m.elapsed
-    val withoutSolar = BillCalc.compute(m.projected + m.selfUnits / max(1, m.covered) * m.totalDays, cfg)
-    val saved = withoutSolar.total - bill.total
     val (past, verdict) = BillCalc.history(byDate, today, cfg)
 
-    SectionCard("Electricity bill estimate", action = {
+    SectionCard("Electricity bill estimate", info = BILL_INFO, action = {
         Text(if (cfg.protected) "Protected" else "Unprotected", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
             color = if (cfg.protected) e.good else e.warn,
             modifier = Modifier.clip(CircleShape).background((if (cfg.protected) e.good else e.warn).copy(alpha = 0.14f)).padding(horizontal = 12.dp, vertical = 5.dp))
     }) {
-        Text("IESCO home tariff · ${short(m.start)} – ${short(m.end)} · day ${m.elapsed} of ${m.totalDays}",
+        Text("${monthName(now.ym, "MMMM yyyy")} bill · reading ${short(m.start)} – ${short(BillCalc.nextCycle(m.start))} · day ${m.elapsed} of ${m.totalDays}",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(10.dp))
-        Text("Expected bill this month", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Expected bill", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(rs(bill.total), style = MaterialTheme.typography.displaySmall.merge(NumberStyle))
         Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(Modifier.weight(1f)) {
                 Text("Grid units", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("${m.soFar.roundToInt()} so far → ≈ ${m.projected.roundToInt()}", style = MaterialTheme.typography.titleMedium.merge(NumberStyle))
             }
-            if (saved > 1) Column(Modifier.weight(1f)) {
+            if (now.saved > 1) Column(Modifier.weight(1f)) {
                 Text("Solar is saving you", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("≈ ${rs(saved)}", style = MaterialTheme.typography.titleMedium.merge(NumberStyle), color = e.good)
+                Text("≈ ${rs(now.saved)}", style = MaterialTheme.typography.titleMedium.merge(NumberStyle), color = e.good)
             }
         }
 
@@ -96,7 +106,7 @@ fun BillCard(byDate: Map<Int, DayRec>, today: Int, cfg: BillConfig) {
         Spacer(Modifier.height(14.dp))
         val scaleMax = maxOf(limit * 1.25, m.projected * 1.1, 50.0)
         fun f(u: Double) = (u / scaleMax).coerceIn(0.0, 1.0).toFloat()
-        BoxWithConstraints(Modifier.fillMaxWidth().height(30.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(32.dp)) {
             val w = maxWidth
             Box(Modifier.fillMaxWidth().height(12.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
                 Box(Modifier.fillMaxWidth(f(m.projected)).fillMaxHeight().clip(CircleShape).background(e.grid.copy(alpha = 0.35f)))
@@ -105,28 +115,25 @@ fun BillCard(byDate: Map<Int, DayRec>, today: Int, cfg: BillConfig) {
             for (u in listOf(100, limit)) {
                 Box(Modifier.offset(x = w * f(u.toDouble()) - 1.dp, y = (-3).dp).width(2.dp).height(18.dp).background(MaterialTheme.colorScheme.outline))
                 Text("$u", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.offset(x = w * f(u.toDouble()) - 10.dp, y = 15.dp).width(20.dp), textAlign = TextAlign.Center)
+                    modifier = Modifier.offset(x = w * f(u.toDouble()) - 14.dp, y = 16.dp).width(28.dp), textAlign = TextAlign.Center)
             }
         }
-        Text("dark = used so far · light = expected by month end" + if (m.covered < m.elapsed) " · monitor has ${m.covered} of ${m.elapsed} days, the rest are estimated" else "",
+        Text("dark = used so far · light = expected by the meter reading" + when {
+                now.basis == "bills" -> " · the monitor has only ${m.covered} day${if (m.covered == 1) "" else "s"} of this month, so this uses your last bills (about ${now.recentAvg} units)"
+                m.covered < m.elapsed -> " · the monitor has ${m.covered} of ${m.elapsed} days, the rest are estimated"
+                else -> ""
+            },
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        // advice
-        val step = BillCalc.unitsToNextStep(m.projected, cfg)
-        val perDayLeft = if (left > 0 && m.soFar < limit) String.format(Locale.US, "%.1f", (limit - m.soFar) / left) else null
+        val a = now.alert
         when {
-            cfg.protected && bill.lostProtection -> {
-                val cross = if (m.perDay > 0) BillCalc.addDays(m.start, (limit / m.perDay).toLong()) else null
-                Note(e.crit, Icons.Rounded.GppBad,
-                    "At this pace the month ends near ${m.projected.roundToInt()} units: over $limit" + (if (cross != null && cross <= m.end) ", around ${short(cross)}" else "") +
-                        ". The whole month would then be billed at the unprotected rate (≈ ${rs(bill.total)} instead of ≈ ${rs(BillCalc.compute(limit.toDouble(), cfg).total)} at $limit units), and you lose protected status for the next 6 months." +
-                        (perDayLeft?.let { " To stay protected, keep to about $it units a day for the remaining $left days." } ?: ""))
-            }
-            cfg.protected && step != null -> Note(e.good, Icons.Rounded.VerifiedUser,
-                "On track to stay protected. ${(limit - m.projected).roundToInt()} units of headroom by month end" + (perDayLeft?.let { " · up to $it units/day is safe for the remaining $left days" } ?: "") + ".")
-            !cfg.protected && step != null && step.first < 40 -> Note(e.warn, Icons.Rounded.Warning,
-                "${step.first} units before the next slab (${step.second}). Unprotected bills charge the slab you reach on every unit, so crossing it raises the whole bill.")
+            a != null && a.level > 0 -> Note(if (a.level == 2) e.crit else e.warn, if (a.level == 2) Icons.Rounded.GppBad else Icons.Rounded.Warning, a.title, a.text)
+            cfg.protected && !bill.lostProtection -> Note(e.good, Icons.Rounded.VerifiedUser, "On track to stay protected",
+                "About ${(limit - m.projected).roundToInt()} units to spare by the meter reading" +
+                    (if (left > 0 && m.soFar < limit) "; up to ${String.format(Locale.US, "%.1f", (limit - m.soFar) / left)} units a day is safe for the remaining $left days" else "") + ".")
         }
+        if (verdict != null && verdict != cfg.protected) Note(e.warn, Icons.Rounded.Info, "Check your status",
+            "Your last 6 bills say ${if (verdict) "protected" else "unprotected"}, but the settings say ${if (cfg.protected) "protected" else "unprotected"}. Change it in Settings → Bill if the bill agrees.")
 
         TextButton(onClick = { open = !open }, modifier = Modifier.padding(top = 4.dp)) {
             Icon(if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null)
@@ -137,87 +144,133 @@ fun BillCard(byDate: Map<Int, DayRec>, today: Int, cfg: BillConfig) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 val list = if (bill.protectedTier) cfg.ps else cfg.us
                 Row2("Energy: ${bill.units} units" + if (bill.protectedTier && bill.slab > 0) " (first ${cfg.ps[bill.slab - 1].upTo} at Rs ${cfg.ps[bill.slab - 1].rate}, rest at Rs ${bill.rate})" else " × Rs ${bill.rate}", rs(bill.energy))
-                Row2("Fixed charge (${fmtNum(cfg.kw)} kW × Rs ${fmtNum(list[bill.slab].fixedPerKw)})", rs(bill.fixed))
-                if (bill.adjust != 0.0) Row2("Fuel / quarterly adjustment", rs(bill.adjust))
-                Row2("Electricity duty ${fmtNum(cfg.ed)}%", rs(bill.duty))
-                Row2("Sales tax (GST) ${fmtNum(cfg.gst)}%", rs(bill.gst))
-                if (cfg.ptv > 0) Row2("PTV fee", rs(cfg.ptv))
+                Row2("Fixed charge (${n(cfg.kw)} kW × Rs ${n(list[bill.slab].fixedPerKw)})", rs(bill.fixed))
+                if (bill.fcs != 0.0) Row2("F.C. surcharge (${bill.units} × Rs ${n(cfg.fc)})", rs(bill.fcs))
+                if (bill.qta != 0.0) Row2("Quarterly adjustment (${bill.units} × Rs ${n(cfg.qta)})", rs(bill.qta))
+                if (bill.fpa != 0.0) Row2("Fuel adjustment (${bill.fpaUnits} units of ${monthName(BillCalc.addMonths(now.ym, -2))} × Rs ${n(cfg.fpa)})", rs(bill.fpa))
+                Row2("Electricity duty ${n(cfg.ed)}%", rs(bill.duty))
+                Row2("Sales tax (GST) ${n(cfg.gst)}%", rs(bill.gst))
+                if (cfg.ptv > 0) Row2("TV fee", rs(cfg.ptv))
                 HorizontalDivider()
                 Row2("Total", rs(bill.total), bold = true)
-                Text("Rates: NEPRA S.R.O. 279(I)/2026. Protected = every one of the last 6 months at or under $limit units; going over once bills that month at the unprotected rate and removes the status for 6 months. " +
-                    "Unprotected homes pay the rate of the slab they reach on every unit. Grid units are estimated by the inverter, and your meter also counts anything not wired through it: add that as \"other units\" in Settings → Bill. FPA changes every month; copy it from your bill.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+                if (cfg.fpa == 0.0) Text("Fuel adjustment (FPA) is not set: copy the Rs/unit from your latest bill into Settings → Bill for a closer estimate.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(12.dp)) {
-                    Text("Last 6 months from the monitor: " + when (verdict) {
+                    Text("Last 6 bills: " + when (verdict) {
                         true -> "all at or under $limit → protected"
                         false -> "a month over $limit → unprotected"
-                        null -> "not enough history yet, so the status comes from your setting"
+                        null -> "some months missing, so the status comes from your setting"
                     }, style = MaterialTheme.typography.labelMedium)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         past.reversed().forEach { p ->
                             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                val c = if (!p.full) MaterialTheme.colorScheme.outline else if (p.units > limit) e.crit else e.good
-                                Text(if (p.full) "${p.units.roundToInt()}" else "–", style = MaterialTheme.typography.labelLarge.merge(NumberStyle), color = c, textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (p.full) c.copy(alpha = 0.14f) else Color.Transparent).padding(vertical = 4.dp))
-                                Text(dateOf(p.start).format(DateTimeFormatter.ofPattern("MMM")), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                val u = p.units
+                                val c = if (u == null) MaterialTheme.colorScheme.outline else if (u > limit) e.crit else e.good
+                                Text(u?.roundToInt()?.toString() ?: "–", style = MaterialTheme.typography.labelLarge.merge(NumberStyle), color = c, textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (u != null) c.copy(alpha = 0.14f) else Color.Transparent).padding(vertical = 4.dp))
+                                Text(monthName(p.month, "MMM"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                             }
                         }
                     }
+                    Text("From the bills you entered, or from the monitor for months it fully covered.", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                 }
             }
         }
     }
 }
-
-private fun fmtNum(v: Double) = if (v % 1.0 == 0.0) v.toInt().toString() else v.toString()
 
 @Composable
 private fun Row2(k: String, v: String, bold: Boolean = false) {
     Row(Modifier.fillMaxWidth()) {
         Text(k, style = MaterialTheme.typography.bodyMedium, color = if (bold) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = if (bold) FontWeight.Bold else null, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(12.dp))
         Text(v, style = MaterialTheme.typography.bodyMedium.merge(NumberStyle), fontWeight = if (bold) FontWeight.Bold else FontWeight.Medium)
     }
 }
 
 @Composable
-private fun Note(tint: Color, icon: ImageVector, text: String) {
+private fun Note(tint: Color, icon: ImageVector, title: String, text: String) {
     Row(Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(16.dp)).background(tint.copy(alpha = 0.12f)).padding(12.dp)) {
         Icon(icon, null, tint = tint)
         Spacer(Modifier.width(10.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium)
+        Column {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(text, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 
-/** One row per day in units (kWh), newest first. */
+/** One row per day in units (kWh), newest first. Column titles wrap onto two lines instead of overlapping. */
 @Composable
 fun DailyUnits(rows: List<Pair<Int, DayRec>>, today: Int) {
     val e = LocalEnergy.current
     fun u(wh: Float) = String.format(Locale.US, if (wh >= 10_000) "%.1f" else "%.2f", wh / 1000)
-    SectionCard("Daily units") {
-        Text("1 unit = 1 kWh, the same unit as your electricity bill", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(8.dp))
+    SectionCard("Daily units", info = "1 unit = 1 kWh, the same unit as your electricity bill. \"Solar + battery\" is the home's use that did not come from the grid.") {
         val head = MaterialTheme.typography.labelSmall
-        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.Bottom) {
-            Text("Day", style = head, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1.3f))
-            listOf("Solar" to e.solar, "Home" to e.load, "Solar+batt" to e.batt, "Grid" to e.grid).forEach { (l, c) ->
-                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width(7.dp).height(7.dp).clip(CircleShape).background(c))
-                    Spacer(Modifier.width(4.dp))
-                    Text(l, style = head, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.Bottom) {
+            Text("Day", style = head, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1.25f))
+            listOf("Solar\nmade" to e.solar, "Home\nused" to e.load, "Solar +\nbattery" to e.batt, "From\ngrid" to e.grid).forEach { (l, c) ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(c))
+                    Spacer(Modifier.height(3.dp))
+                    Text(l, style = head, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.End)
                 }
             }
         }
         rows.forEach { (k, r) ->
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            Row(Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
-                val st = MaterialTheme.typography.bodySmall.merge(NumberStyle)
-                Text(if (k == today) "Today" else dayLabel(k).substringBeforeLast(' '), style = st, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1.3f), maxLines = 1)
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                val st = MaterialTheme.typography.bodyMedium.merge(NumberStyle)
+                Text(if (k == today) "Today" else dayLabel(k).substringBeforeLast(' '), style = st, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1.25f))
                 Text(u(r.pvWh), style = st, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
                 Text(u(r.loadWh), style = st, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
                 Text(u(max(0f, r.loadWh - r.gridWh)), style = st, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
                 Text(u(r.gridWh), style = st, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** Units of every bill entered, with the protected limit, and what they show. */
+@Composable
+fun BillHistory(cfg: BillConfig) {
+    val hist = cfg.hist
+    if (hist.size < 2) return
+    val e = LocalEnergy.current
+    val cs = MaterialTheme.colorScheme
+    val limit = cfg.limit
+    SectionCard("Your bills", info = "From the bills entered in Settings → Bill. Bars turn amber at ${limit - 25}+ units and red above $limit. The dashed line is the protected limit.") {
+        Text("${hist.size} months from ${monthName(hist.first().month)} to ${monthName(hist.last().month)} · units per bill", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+        Spacer(Modifier.height(10.dp))
+        val max = maxOf(limit * 1.15f, hist.maxOf { it.units }.toFloat())
+        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(150.dp)) {
+            val w = size.width / hist.size
+            hist.forEachIndexed { i, b ->
+                val h = size.height * b.units / max
+                val c = if (b.units > limit) e.crit else if (b.units >= limit - 25) e.warn else e.grid
+                drawRoundRect(c.copy(alpha = if (i == hist.size - 1) 1f else 0.8f), androidx.compose.ui.geometry.Offset(i * w + w * 0.15f, size.height - h),
+                    androidx.compose.ui.geometry.Size(w * 0.7f, h), androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()))
+            }
+            val y = size.height * (1 - limit / max)
+            drawLine(e.crit, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), 1.5.dp.toPx(),
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())))
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            val step = (hist.size + 9) / 10
+            hist.forEachIndexed { i, b ->
+                Text(if ((i % step == 0 && i < hist.size - 2) || i == hist.size - 1) monthName(b.month, "MMM") else "", style = MaterialTheme.typography.labelSmall, color = cs.outline,
+                    textAlign = TextAlign.Center, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        BillCalc.insights(hist, limit).forEach { x ->
+            Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
+                Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(when (x.tone) { "good" -> e.good; "warn" -> e.warn; "crit" -> e.crit; else -> cs.outline }))
+                Spacer(Modifier.width(10.dp))
+                Text(x.text, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }

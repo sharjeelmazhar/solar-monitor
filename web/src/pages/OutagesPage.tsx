@@ -94,7 +94,7 @@ export default function OutagesPage() {
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
             <Card>
               <CardHeader
-                title="Day clock"
+                title="Day clock" info={<><p>Each slice is one hour. Its colours show what powered the home: <b>yellow</b> solar, <b>green</b> battery, <b>pink</b> grid. Longer slices mean more energy used.</p><p>The outer ring shows the grid: pink when available, <b>red stripes</b> when it was off.</p><p>Tap a slice or a red part for details.</p></>}
                 sub={clockDay === today ? 'Today · midnight at the top' : dayLabel(clockDay, { weekday: 'long', day: 'numeric', month: 'short' })}
                 action={
                   <div className="flex gap-1">
@@ -190,11 +190,11 @@ function EventCard({ o, recs, onShow }: { o: Outage; recs: MinRec[]; onShow: () 
     <button onClick={onShow} className="focus-ring grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-2xl bg-surface-2 px-4 py-3 text-left hover:bg-surface-3">
       <div className="relative grid gap-2 pl-5">
         <span className="absolute bottom-2 left-[5px] top-2 w-0.5 rounded-full bg-crit/40" />
+        <Line dot={o.ongoing ? 'var(--text-3)' : 'var(--grid)'} label={o.ongoing ? 'Still off' : 'Came back'}
+          time={o.ongoing ? `${fmtDuration((Date.now() - o.start) / 60_000)} so far` : o.endKnown ? hhmm(o.end) + (crossesMidnight ? ' (next day)' : '') : 'unknown'}
+          note={!o.ongoing && !o.endKnown ? `monitor was offline after ${hhmm(o.end)}` : undefined} />
         <Line dot="var(--crit)" label="Went off" time={o.startKnown ? hhmm(o.start) : `before ${hhmm(o.start)}`}
           note={o.startKnown ? undefined : 'already off when the monitor started'} />
-        <Line dot={o.ongoing ? 'var(--text-3)' : 'var(--grid)'} label={o.ongoing ? 'Still off' : 'Came back'}
-          time={o.ongoing ? '—' : o.endKnown ? hhmm(o.end) + (crossesMidnight ? ' (next day)' : '') : 'unknown'}
-          note={!o.ongoing && !o.endKnown ? `monitor was offline after ${hhmm(o.end)}` : undefined} />
         {d && (
           <p className="text-xs text-text-3">
             Home used {fmtWh(d.homeWh)}{d.solarWh > 1 ? ` · solar made ${fmtWh(d.solarWh)}` : ''} · battery {d.socFrom}% → {d.socTo}%

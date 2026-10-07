@@ -4,7 +4,7 @@ import { BillSettings } from '../components/BillSettings'
 import { Button, Card, CardHeader, IconButton, Segmented, Switch } from '../components/ui/ui'
 import { BATT_TYPES, CHG_PRIO, CHG_PRIO_HELP, OUT_PRIO, OUT_PRIO_HELP, parseFlags, parseRated } from '../lib/decode'
 import { dayLabel, fmtDuration } from '../lib/format'
-import { use3d, useClock, webglAvailable, type Theme } from '../lib/prefs'
+import { use3d, useBattIdle, useClock, webglAvailable, type Theme } from '../lib/prefs'
 import { API_BASE, refreshInfo, refreshInverter, saveSettings, useStore } from '../lib/store'
 import { Alerts, alertsOf } from './OverviewPage'
 
@@ -69,6 +69,7 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
                 <Segmented label="Theme" value={theme} onChange={setTheme} options={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]} />
               </div>
               <ClockFormat />
+              <BattIdle />
               <ThreeD />
             </div>
           </Card>
@@ -109,29 +110,26 @@ function SettingsCard() {
   const info = useStore((s) => s.info)
   const [name, setName] = useState('')
   const [ah, setAh] = useState('')
-  const [tariff, setTariff] = useState('')
   const [msg, setMsg] = useState('')
   useEffect(() => {
     if (!info) return
     setName(info.name !== 'Solar' ? info.name : '')
     setAh(info.battAh ? String(info.battAh) : '')
-    setTariff(info.tariff ? String(info.tariff) : '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [info?.name, info?.battAh, info?.tariff])
+  }, [info?.name, info?.battAh])
   const field = 'focus-ring min-h-11 w-full rounded-2xl border border-border bg-surface-2 px-3 text-sm'
   return (
     <Card>
       <CardHeader title="Your system" sub="saved on the monitor, shared with the phone app" />
       <form className="grid gap-3" onSubmit={async (e) => {
         e.preventDefault()
-        const ok = await saveSettings({ name: name || 'Solar', battAh: ah || '0', tariff: tariff || '0' })
+        const ok = await saveSettings({ name: name || 'Solar', battAh: ah || '0' })
         setMsg(ok ? 'Saved' : 'Could not reach the monitor')
         setTimeout(() => setMsg(''), 3000)
       }}>
         <label className="grid gap-1 text-xs text-text-2">Name<input className={field} value={name} maxLength={30} placeholder="Solar Monitor" onChange={(e) => setName(e.target.value)} /></label>
         <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0">
           <label className="grid gap-1 text-xs text-text-2">Battery capacity (Ah)<input className={field} inputMode="decimal" value={ah} placeholder="e.g. 200" onChange={(e) => setAh(e.target.value.replace(/[^\d.]/g, ''))} /></label>
-          <label className="grid gap-1 text-xs text-text-2">Quick price per unit (Rs)<input className={field} inputMode="decimal" value={tariff} placeholder="e.g. 60" onChange={(e) => setTariff(e.target.value.replace(/[^\d.]/g, ''))} /></label>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="primary" type="submit" disabled={!info}>Save</Button>
@@ -139,6 +137,27 @@ function SettingsCard() {
         </div>
       </form>
     </Card>
+  )
+}
+
+function BattIdle() {
+  const [v, set] = useBattIdle()
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm">Ignore small battery flows</div>
+          <div className="text-xs text-text-3">At full charge the inverter often takes a little from the battery. Below the limit it shows as idle, not charging or discharging.</div>
+        </div>
+        <Switch label="Ignore small battery flows" checked={v.on} onChange={(on) => set({ ...v, on })} />
+      </div>
+      {v.on && (
+        <label className="flex items-center gap-3 text-sm">
+          <input type="range" min={20} max={300} step={10} value={v.w} onChange={(e) => set({ ...v, w: +e.target.value })} className="flex-1 accent-[var(--batt)]" aria-label="Battery idle limit in watts" />
+          <span className="num w-16 text-right">{v.w} W</span>
+        </label>
+      )}
+    </div>
   )
 }
 

@@ -247,38 +247,66 @@ private fun Key(color: Color, label: String, ring: Boolean = false, hatch: Boole
     }
 }
 
+private class Item(val color: Color, val text: String, val hatch: Boolean = false)
+
+/** One fact per line, each with the colour it has on the clock. */
 @Composable
 private fun Details(sel: Sel?, mix: List<HourMix>, outs: List<Outage>, recs: List<MinRec>, onClear: () -> Unit) {
-    val text = when (sel) {
+    val e = LocalEnergy.current
+    val cs = MaterialTheme.colorScheme
+    var head = ""
+    val items = ArrayList<Item>()
+    when (sel) {
         is Sel.Hour -> {
             val h = mix[sel.h]
-            val head = "${hourLabel(sel.h)} – ${hourLabel(sel.h + 1)}"
-            if (h.minutes == 0) "$head: the monitor has no data for this hour."
+            head = "${hourLabel(sel.h)} – ${hourLabel(sel.h + 1)}" + if (h.minutes > 0) " · home used ${fmtWh(h.homeWh)}" else ""
+            if (h.minutes == 0) items += Item(cs.outline, "The monitor has no data for this hour.")
             else {
                 fun pct(v: Double) = if (h.homeWh > 0) (v / h.homeWh * 100).roundToInt() else 0
+                items += Item(e.solar, "Solar: ${pct(h.solarWh)}% of home use (${fmtWh(h.solarWh)}) · made ${fmtWh(h.pvWh)} in total")
+                items += Item(e.batt, "Battery: ${pct(h.battWh)}% (${fmtWh(h.battWh)})")
+                items += Item(e.grid, "Grid: ${pct(h.gridWh)}% (${fmtWh(h.gridWh)})")
                 fun hourOf(t: Long) = java.time.Instant.ofEpochMilli(t).atZone(com.solarmonitor.app.ui.zone).hour
-                val inHour = outs.filter { hourOf(it.start) <= sel.h && hourOf(it.end - 1) >= sel.h }
-                "$head: home used ${fmtWh(h.homeWh)} — solar ${pct(h.solarWh)}%, battery ${pct(h.battWh)}%, grid ${pct(h.gridWh)}%. Solar made ${fmtWh(h.pvWh)}." +
-                    (if (inHour.isNotEmpty()) " Grid was off " + inHour.joinToString { "${hhmm(it.start)} – ${if (it.ongoing) "now" else hhmm(it.end)}" } + "." else "") +
-                    (if (h.minutes < 55) " (monitor saw ${h.minutes} of 60 minutes)" else "")
+                outs.filter { hourOf(it.start) <= sel.h && hourOf(it.end - 1) >= sel.h }.forEach {
+                    items += Item(e.crit, "Grid off ${hhmm(it.start)} – ${if (it.ongoing) "now" else hhmm(it.end)} (${fmtDuration(it.minutes.toDouble())})", hatch = true)
+                }
+                if (h.minutes < 55) items += Item(cs.outline, "The monitor saw ${h.minutes} of 60 minutes")
             }
         }
         is Sel.Out -> {
             val o = sel.o
-            val d = Outages.during(recs, o)
-            "Grid off ${if (o.startKnown) "at ${hhmm(o.start)}" else "before ${hhmm(o.start)}"}, " +
-                (if (o.ongoing) "still off" else if (o.endKnown) "back at ${hhmm(o.end)}" else "monitor went offline before it came back") +
-                " · ${fmtDuration(o.minutes.toDouble())}" +
-                (d?.let { ". During it the home used ${fmtWh(it.homeWh)}" + (if (it.solarWh > 1) ", solar made ${fmtWh(it.solarWh)}" else "") + "; battery ${it.socFrom}% → ${it.socTo}%." } ?: "")
+            head = "Grid off · ${fmtDuration(o.minutes.toDouble())}"
+            items += Item(e.crit, "Went off ${if (o.startKnown) "at" else "before"} ${hhmm(o.start)}", hatch = true)
+            items += Item(if (o.ongoing) cs.outline else e.grid, if (o.ongoing) "Still off" else if (o.endKnown) "Came back at ${hhmm(o.end)}" else "The monitor went offline before it came back")
+            Outages.during(recs, o)?.let {
+                items += Item(e.load, "Home used ${fmtWh(it.homeWh)} during it")
+                if (it.solarWh > 1) items += Item(e.solar, "Solar made ${fmtWh(it.solarWh)}")
+                items += Item(e.batt, "Battery ${it.socFrom}% → ${it.socTo}%")
+            }
         }
-        null -> "Tap an hour or a red part of the ring to see what happened then."
+        null -> {}
     }
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = if (sel == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f).padding(vertical = 6.dp))
-        if (sel != null) TextButton(onClick = onClear) { Text("Clear") }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh).padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
+        if (sel == null) {
+            Text("Tap an hour or a red part of the ring to see what happened then.", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(head, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                TextButton(onClick = onClear) { Text("Clear") }
+            }
+            items.forEach { it ->
+                Row(Modifier.padding(vertical = 3.dp, horizontal = 0.dp), verticalAlignment = Alignment.Top) {
+                    Canvas(Modifier.padding(top = 5.dp).size(11.dp)) {
+                        if (it.hatch) {
+                            drawCircle(it.color.copy(alpha = 0.3f))
+                            drawCircle(it.color, style = Stroke(1.5.dp.toPx()))
+                            drawLine(it.color, Offset(size.width * 0.2f, size.height * 0.8f), Offset(size.width * 0.8f, size.height * 0.2f), 1.5.dp.toPx())
+                        } else drawCircle(it.color)
+                    }
+                    Spacer(Modifier.size(10.dp))
+                    Text(it.text, style = MaterialTheme.typography.bodyMedium, color = cs.onSurface, modifier = Modifier.padding(end = 8.dp))
+                }
+            }
+        }
     }
 }

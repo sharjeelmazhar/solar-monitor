@@ -79,7 +79,7 @@ hour-of-day heat map, timeline), System (inverter settings explained, device sta
 | `GET /api/days` | Binary, 40 B per day: u32 date, f32 pvWh, loadWh, gridWh, chgWh, disWh, u16 pvPeak, loadPeak, gridOnMin, onlineMin, u8 battMin, battMax, i8 tempMax, u8 outages, u32 reserved. |
 | `POST /api/settings` | `battAh`, `tariff`, `name`, `tz`. |
 | `POST /api/time` | `t` = epoch seconds (only used when NTP isn't reachable). |
-| `GET /api/bill`, `POST /api/bill` (`v`=JSON) | Bill estimator settings (IESCO slabs, status, load, taxes), stored as-is (max 1 KB) so the web and phone apps share them. |
+| `GET /api/bill`, `POST /api/bill` (`v`=JSON) | Bill estimator settings (IESCO slabs, status, load, taxes), stored as-is (max 2 KB) so the web and phone apps share them. |
 
 Binary data is little-endian. Flags: bit0 grid present, bit1 solar charging, bit2 grid charging, bit3 load on.
 
