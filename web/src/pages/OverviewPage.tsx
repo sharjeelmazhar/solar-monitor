@@ -1,12 +1,12 @@
-import { AlertTriangle, CheckCircle2, Info as InfoIcon, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Info as InfoIcon, WifiOff, XCircle } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Legend, TimeChart, useHidden, type Series } from '../components/charts/charts'
 import { FlowDiagram } from '../components/flow/FlowDiagram'
 import { Card, CardHeader, ChartCard, Segmented, Stat, Value, cn } from '../components/ui/ui'
 import { activeWarnings, modeOf, parseRated, SEVERE, WARNINGS } from '../lib/decode'
-import { fmtDuration, fmtPkr, fmtW, fmtWh, hhmmss } from '../lib/format'
+import { fmtDuration, fmtPkr, fmtW, fmtWh, hhmm, hhmmss } from '../lib/format'
 import { use3d } from '../lib/prefs'
-import { useStore } from '../lib/store'
+import { useStale, useStore } from '../lib/store'
 import type { Info, Live } from '../lib/types'
 
 const EnergyCore3D = lazy(() => import('../components/flow/EnergyCore3D'))
@@ -17,10 +17,12 @@ export default function OverviewPage({ dark }: { dark: boolean }) {
   const rated = useMemo(() => parseRated(info?.inv.qpiri), [info?.inv.qpiri])
   const ratedW = rated?.outW || 3200
   const [fx3d] = use3d()
-  const alerts = d?.ever ? alertsOf(d) : []
+  const stale = useStale()
+  const offline = !!d && stale != null
+  const alerts = d?.ever && !offline ? alertsOf(d) : []
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <Card className="relative overflow-hidden">
           <CardHeader
@@ -29,22 +31,43 @@ export default function OverviewPage({ dark }: { dark: boolean }) {
             action={d?.ever && <span className="rounded-full border border-border-strong bg-surface-2 px-3 py-1 text-xs font-semibold">{modeOf(d.mode).name}</span>}
           />
           <div className="relative mx-auto max-w-[560px]">
-            {fx3d && d?.ok && (
+            {offline && <OfflineBadge seconds={stale!} t={d!.t} />}
+            <div className={cn('transition-[filter,opacity] duration-500', offline && 'pointer-events-none opacity-40 blur-[1.5px] grayscale')} aria-hidden={offline || undefined}>
+            {fx3d && d?.ok && !offline && (
               <div className="absolute left-1/2 top-1/2 aspect-square w-[62%] -translate-x-1/2 -translate-y-1/2 opacity-80">
                 <Suspense fallback={null}>
                   <EnergyCore3D key={dark ? 'd' : 'l'} solar={Math.min(1, d.pvW / ratedW)} load={Math.min(1, d.loadW / ratedW)} battery={d.battPct / 100} />
                 </Suspense>
               </div>
             )}
-            <div className="relative"><FlowDiagram d={d} ratedW={ratedW} /></div>
+            <div className="relative"><FlowDiagram d={d} ratedW={ratedW} still={offline} /></div>
+            </div>
           </div>
         </Card>
-        <NowTiles d={d} info={info} battRatedV={rated?.battV} float={rated?.float} />
+        <div className={cn('grid transition-[filter,opacity] duration-500', offline && 'opacity-45 grayscale')}>
+          <NowTiles d={d} info={info} battRatedV={rated?.battV} float={rated?.float} />
+        </div>
       </section>
 
       {alerts.some((a) => a.level > 0) && <Alerts items={alerts.filter((a) => a.level > 0)} />}
       {d?.ever && <TodayCard d={d} tariff={info?.tariff ?? 0} />}
       <LiveChart />
+    </div>
+  )
+}
+
+/** Shown over the flow diagram when readings stop: nothing moves, last values greyed out. */
+function OfflineBadge({ seconds, t }: { seconds: number; t: number }) {
+  const ago = !Number.isFinite(seconds) ? '' : seconds < 90 ? `${Math.round(seconds)} s ago` : `${fmtDuration(seconds / 60)} ago`
+  return (
+    <div className="absolute inset-0 z-10 grid place-items-center" role="status">
+      <div className="glass flex max-w-[86%] items-center gap-3 rounded-2xl px-4 py-3 text-sm shadow-lg">
+        <WifiOff size={20} className="shrink-0 text-crit" />
+        <div>
+          <div className="font-semibold">Monitor not responding</div>
+          <div className="text-xs text-text-2">Values below are from the last reading{t ? ` at ${hhmm(t)}` : ''}{ago ? ` (${ago})` : ''}. The monitor may be off or out of Wi-Fi range.</div>
+        </div>
+      </div>
     </div>
   )
 }

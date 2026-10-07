@@ -65,7 +65,7 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <Card className="flex flex-wrap items-center gap-2 !py-3">
         <IconButton label="Previous day" disabled={date <= histFrom} onClick={() => setDate(addDays(date, -1))}><ChevronLeft size={18} /></IconButton>
         <label className="relative flex min-h-10 flex-1 items-center justify-center rounded-2xl bg-surface-2 px-3 text-sm font-semibold sm:flex-none sm:min-w-64">

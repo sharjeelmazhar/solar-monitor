@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { BillCard } from '../components/BillCard'
 import { BarChart, Legend, useHidden, type Series } from '../components/charts/charts'
 import { Card, CardHeader, ChartCard, Empty, Segmented, Skeleton, Stat, Value } from '../components/ui/ui'
 import { addDays, dayLabel, fmtDuration, fmtPkr, fmtUnits, fmtWh, fromYmd, isoToYmd, ymd, ymdIso } from '../lib/format'
@@ -81,7 +82,7 @@ export default function EnergyPage() {
   const self = tot.load > 0 ? Math.round(Math.max(0, Math.min(1, 1 - tot.grid / tot.load)) * 100) : null
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <section className="grid gap-4 md:grid-cols-3">
         <Card className="relative overflow-hidden md:col-span-2">
           <span className="pointer-events-none absolute -right-10 -top-16 size-56 rounded-full bg-solar opacity-20 blur-3xl" />
@@ -91,7 +92,7 @@ export default function EnergyPage() {
             {tariff > 0 && <div className="pb-2"><p className="text-xs text-text-3">saved at Rs {tariff}/unit</p><Value text={fmtPkr((mPv / 1000) * tariff)} className="text-2xl text-good" /></div>}
           </div>
           <p className="mt-2 text-sm text-text-2">
-            {fromYmd(today).toLocaleDateString(undefined, { month: 'long' })} so far · grid ≈ <span className="num font-semibold text-text">{fmtUnits(mGrid)}</span> units (estimated){tariff ? '' : ' · set your price per unit in System to see savings'}
+            {fromYmd(today).toLocaleDateString(undefined, { month: 'long' })} so far · grid ≈ <span className="num font-semibold text-text">{fmtUnits(mGrid)}</span> units (estimated)
           </p>
         </Card>
         <Card>
@@ -101,6 +102,8 @@ export default function EnergyPage() {
           <p className="mt-2 text-xs text-text-3">Share of home energy that did not come from the grid.</p>
         </Card>
       </section>
+
+      {days && <BillCard byDate={byDate} today={today} />}
 
       <Card className="flex flex-wrap items-center gap-3 !py-3">
         <Segmented label="Range" value={range} onChange={setRange} className="flex-wrap"
@@ -138,8 +141,46 @@ export default function EnergyPage() {
               <Stat label="Average solar / day" value={fmtWh(tot.pv / have.length)} />
             </div>
           </Card>
+          <DailyTable rows={keys.map((k, i) => [k, rows[i]] as const).filter((x): x is readonly [number, DayRec] => !!x[1]).reverse().slice(0, 62)} today={today} />
         </>
       )}
     </div>
+  )
+}
+
+/** One row per day in units (kWh), newest first. */
+function DailyTable({ rows, today }: { rows: (readonly [number, DayRec])[]; today: number }) {
+  if (!rows.length) return null
+  const u = (wh: number) => (wh / 1000).toFixed(wh >= 10000 ? 1 : 2)
+  return (
+    <Card>
+      <CardHeader title="Daily units" sub="1 unit = 1 kWh, the same unit as your electricity bill" />
+      <div className="-mx-1 overflow-x-auto">
+        <table className="num w-full min-w-[520px] text-sm">
+          <thead>
+            <tr className="text-left text-xs text-text-3 [&_th]:px-1 [&_th]:pb-2 [&_th]:font-medium">
+              <th>Day</th>
+              <th className="text-right"><span className="mr-1 inline-block size-2 rounded-full bg-solar" />Solar made</th>
+              <th className="text-right"><span className="mr-1 inline-block size-2 rounded-full bg-load" />Home used</th>
+              <th className="text-right"><span className="mr-1 inline-block size-2 rounded-full bg-batt" />From solar + battery</th>
+              <th className="text-right"><span className="mr-1 inline-block size-2 rounded-full bg-grid" />From grid</th>
+              <th className="text-right">Outages</th>
+            </tr>
+          </thead>
+          <tbody className="[&_td]:border-t [&_td]:border-border [&_td]:px-1 [&_td]:py-2">
+            {rows.map(([k, r]) => (
+              <tr key={k}>
+                <td className="font-sans text-text-2">{k === today ? 'Today' : dayLabel(k)}</td>
+                <td className="text-right">{u(r.pv)}</td>
+                <td className="text-right">{u(r.load)}</td>
+                <td className="text-right">{u(Math.max(0, r.load - r.grid))}</td>
+                <td className="text-right font-semibold">{u(r.grid)}</td>
+                <td className="text-right text-text-2">{r.outages || '–'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   )
 }

@@ -32,9 +32,10 @@ export function flowsOf(d: Live | null): Record<Key, Flow> {
   }
 }
 
-export function FlowDiagram({ d, ratedW }: { d: Live | null; ratedW: number }) {
+/** still: the monitor stopped answering, so nothing moves (the last values stay visible). */
+export function FlowDiagram({ d, ratedW, still = false }: { d: Live | null; ratedW: number; still?: boolean }) {
   const uid = useId().replace(/:/g, '')
-  const flows = flowsOf(d)
+  const flows = flowsOf(still ? null : d)
   const live = useRef({ flows, ratedW })
   live.current = { flows, ratedW }
   const svgRef = useRef<SVGSVGElement>(null)
@@ -100,7 +101,7 @@ export function FlowDiagram({ d, ratedW }: { d: Live | null; ratedW: number }) {
     }
   }, [])
 
-  const ok = !!d?.ok
+  const ok = !!d?.ok && !still
   const solarFrac = d ? Math.min(1, d.pvW / ratedW) : 0
   const label = d?.ever
     ? `Solar ${fmtW(d.pvW)}, home ${fmtW(d.loadW)}, battery ${d.battPct} percent ${d.battW > DEADBAND ? 'charging' : d.battW < -DEADBAND ? 'discharging' : 'idle'}, grid ${d.gridOn ? 'on' : 'off'}`

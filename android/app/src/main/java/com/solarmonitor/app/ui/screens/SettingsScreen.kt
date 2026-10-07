@@ -60,6 +60,7 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
     val s by repo.prefs.state.collectAsStateWithLifecycle()
     val info by repo.info.collectAsStateWithLifecycle()
     val conn by repo.conn.collectAsStateWithLifecycle()
+    val bill by repo.bill.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     var host by remember(s.host) { mutableStateOf(s.host) }
@@ -76,7 +77,7 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
     }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifAllowed = it }
     val battLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { unrestricted = pm.isIgnoringBatteryOptimizations(ctx.packageName) }
-    LaunchedEffect(Unit) { if (info == null) repo.refreshInfo() }
+    LaunchedEffect(Unit) { if (info == null) repo.refreshInfo(); if (bill == null) repo.loadBill() }
 
     LazyColumn(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
@@ -146,7 +147,7 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(ah, { ah = it }, label = { Text("Battery (Ah)") }, singleLine = true, modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                    OutlinedTextField(tariff, { tariff = it }, label = { Text("Price Rs/kWh") }, singleLine = true, modifier = Modifier.weight(1f),
+                    OutlinedTextField(tariff, { tariff = it }, label = { Text("Quick price Rs/unit") }, singleLine = true, modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 }
                 Button(onClick = {
@@ -159,11 +160,19 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
                 }, enabled = !saving && info != null, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) { Text(if (saving) "Saving…" else "Save to monitor") }
             }
         }
+        item(key = "bill") { BillSettingsCard(repo, bill, toast) }
         item(key = "look") {
             SectionCard("Appearance") {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     listOf("System", "Light", "Dark").forEachIndexed { i, l ->
                         SegmentedButton(selected = s.theme == i, onClick = { repo.prefs.update { it.copy(theme = i) } }, shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                    }
+                }
+                Spacer(Modifier.padding(6.dp))
+                Text("Time format", style = MaterialTheme.typography.labelLarge)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    listOf(true to "2:30 PM", false to "14:30").forEachIndexed { i, (v, l) ->
+                        SegmentedButton(selected = s.hour12 == v, onClick = { repo.prefs.update { it.copy(hour12 = v) } }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(l) }
                     }
                 }
                 if (Build.VERSION.SDK_INT >= 31) {

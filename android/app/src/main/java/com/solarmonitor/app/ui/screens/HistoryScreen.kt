@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.solarmonitor.app.data.BillConfig
 import com.solarmonitor.app.data.DayRec
 import com.solarmonitor.app.data.MinRec
 import com.solarmonitor.app.data.Repository
@@ -146,7 +147,7 @@ fun HistoryScreen(repo: Repository, padding: PaddingValues) {
             SectionCard("Grid availability", action = { Text("${fmtDuration(on.toDouble())} of ${fmtDuration(r.size.toDouble())}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }) {
                 GridStrip(r, d0, e.grid)
                 Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-                    listOf("00:00", "06:00", "12:00", "18:00", "24:00").forEachIndexed { i, s ->
+                    listOf(0, 6, 12, 18, 24).map { com.solarmonitor.app.ui.hourLabel(it) }.forEachIndexed { i, s ->
                         Text(s, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
                             textAlign = if (i == 0) androidx.compose.ui.text.style.TextAlign.Start else if (i == 4) androidx.compose.ui.text.style.TextAlign.End else androidx.compose.ui.text.style.TextAlign.Center)
                     }
@@ -189,8 +190,10 @@ fun EnergyScreen(repo: Repository, padding: PaddingValues) {
     val live by repo.live.collectAsStateWithLifecycle()
     val info by repo.info.collectAsStateWithLifecycle()
     var days by remember { mutableStateOf<List<DayRec>?>(null) }
-    var range by rememberSaveable { mutableIntStateOf(7) }
+    val bill by repo.bill.collectAsStateWithLifecycle()
+    var range by rememberSaveable { mutableIntStateOf(0) }   // 0 = this month
     var hidden by remember { mutableStateOf(setOf<String>()) }
+    LaunchedEffect(Unit) { if (bill == null) repo.loadBill() }
     LaunchedEffect(Unit) { while (true) { repo.days()?.let { days = it }; delay(5 * 60_000) } }
 
     val t = live?.today
@@ -199,7 +202,8 @@ fun EnergyScreen(repo: Repository, padding: PaddingValues) {
     if (t != null && t.date > 0) map[t.date] = DayRec(t.date, t.pvWh.toFloat(), t.loadWh.toFloat(), t.gridWh.toFloat(), t.chgWh.toFloat(), t.disWh.toFloat(),
         t.pvPeak, t.loadPeak, t.gridOnMin, t.onlineMin, 0, 0, 0, t.outages)
     val end = t?.date?.takeIf { it > 0 }?.let { dateOf(it) } ?: LocalDate.now()
-    var keys = (range - 1 downTo 0).map { ymd(end.minusDays(it.toLong())) }
+    val count = if (range == 0) end.dayOfMonth else range
+    var keys = (count - 1 downTo 0).map { ymd(end.minusDays(it.toLong())) }
     if (range > 31) keys.indexOfFirst { it in map }.takeIf { it > 0 }?.let { keys = keys.drop(it) }
     val rows = keys.map { map[it] }
     val fmtLabel = DateTimeFormatter.ofPattern(if (range > 31) "d MMM" else "EEE d")
@@ -208,10 +212,15 @@ fun EnergyScreen(repo: Repository, padding: PaddingValues) {
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        // always present, so the list doesn't keep its old scroll position and hide the card above it once data arrives
+        item(key = "bill") {
+            if (days != null && t != null && t.date > 0) BillCard(map, t.date, bill ?: BillConfig())
+            else SectionCard("Electricity bill estimate") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+        }
         item(key = "range") {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf(7 to "7 days", 30 to "30 days", 365 to "Year").forEachIndexed { i, (n, l) ->
-                    SegmentedButton(selected = range == n, onClick = { range = n }, shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
+                listOf(0 to "Month", 7 to "7 days", 30 to "30 days", 365 to "Year").forEachIndexed { i, (n, l) ->
+                    SegmentedButton(selected = range == n, onClick = { range = n }, shape = SegmentedButtonDefaults.itemShape(i, 4), icon = {}) { Text(l, maxLines = 1) }
                 }
             }
         }
@@ -247,5 +256,7 @@ fun EnergyScreen(repo: Repository, padding: PaddingValues) {
                 ))
             }
         }
+        val daily = keys.zip(rows).mapNotNull { (k, r) -> r?.let { k to it } }.reversed().take(62)
+        if (daily.isNotEmpty()) item(key = "daily") { DailyUnits(daily, t?.date ?: 0) }
     }
 }

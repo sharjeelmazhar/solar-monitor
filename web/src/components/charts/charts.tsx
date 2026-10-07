@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { hhmm } from '../../lib/format'
+import { hhmm, hourLabel } from '../../lib/format'
 import { cn } from '../ui/ui'
 
 export interface Series {
@@ -301,11 +301,11 @@ export function GridStrip({ recs, dayStart }: { recs: { t: number; flags: number
         <rect width={W} height={22} fill="var(--surface-2)" />
         {recs.map((r) => (
           <rect key={r.t} x={((r.t - dayStart) / 864e5) * W} width={Math.max(1, W / 1440 + 0.4)} height={22}
-            fill={r.flags & 1 ? 'var(--grid)' : 'var(--text-3)'} opacity={r.flags & 1 ? 1 : 0.28} />
+            fill={r.flags & 1 ? 'var(--grid)' : 'var(--crit)'} opacity={r.flags & 1 ? 0.75 : 1} />
         ))}
       </svg>
       <div className="num mt-1 flex justify-between text-[11px] text-text-3">
-        {['00:00', '06:00', '12:00', '18:00', '24:00'].map((s) => <span key={s}>{s}</span>)}
+        {[0, 6, 12, 18, 24].map((h) => <span key={h}>{hourLabel(h)}</span>)}
       </div>
     </div>
   )

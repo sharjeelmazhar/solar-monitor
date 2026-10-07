@@ -167,7 +167,7 @@ fun LineChart(
         }
         // time ticks on whole local minutes/hours
         val cand = longArrayOf(60_000, 120_000, 300_000, 600_000, 900_000, 1_800_000, 3_600_000, 7_200_000, 10_800_000, 21_600_000)
-        val iv = cand.firstOrNull { pw / (span.toFloat() / it) >= 62 * d } ?: 21_600_000
+        val iv = cand.firstOrNull { pw / (span.toFloat() / it) >= (if (com.solarmonitor.app.ui.hour12) 74 else 62) * d } ?: 21_600_000   // "2:30 PM" is wider
         val off = java.util.TimeZone.getDefault().getOffset(xMin).toLong()
         var t = ((xMin + off) / iv + 1) * iv - off
         while (t <= xMax) {
@@ -280,17 +280,17 @@ fun BarChart(
     }
 }
 
-/** 24-hour strip: coloured where the grid was available, dim where it was off, empty where not monitored. */
+/** 24-hour strip: grid colour where available, red where off, empty where not monitored. */
 @Composable
 fun GridStrip(minutes: List<MinRec>, dayStart: Long, color: Color, modifier: Modifier = Modifier) {
     val bg = MaterialTheme.colorScheme.surfaceContainerHighest
-    val off = MaterialTheme.colorScheme.outline
+    val off = com.solarmonitor.app.ui.theme.LocalEnergy.current.crit
     Canvas(modifier.fillMaxWidth().height(18.dp).clip(MaterialTheme.shapes.small)) {
         drawRect(bg)
         val w = size.width / 1440f
         for (m in minutes) {
             val x = (m.t - dayStart) / 86_400_000f * size.width
-            drawRect(if (m.gridOn) color else off.copy(alpha = 0.35f), Offset(x, 0f), Size(w + 0.6f, size.height))
+            drawRect(if (m.gridOn) color.copy(alpha = 0.75f) else off, Offset(x, 0f), Size(w + 0.6f, size.height))
         }
     }
 }

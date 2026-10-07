@@ -44,10 +44,17 @@ class Repository(private val context: Context, val prefs: Prefs) {
     val updateInterval: StateFlow<Long> = _interval.asStateFlow()
     private val _lastMsg = MutableStateFlow(0L)       // elapsedRealtime of last message
     val lastMsg: StateFlow<Long> = _lastMsg.asStateFlow()
+    private val _lastRx = MutableStateFlow(0L)        // elapsedRealtime of any message, heartbeats too
+    val lastRx: StateFlow<Long> = _lastRx.asStateFlow()
+    private val _bill = MutableStateFlow<BillConfig?>(null)
+    val bill: StateFlow<BillConfig?> = _bill.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
     val uiActive = MutableStateFlow(false)
+    /** elapsedRealtime when the app last came to the screen (grace period before calling the monitor offline). */
+    @Volatile var uiSince = 0L
+        private set
     val serviceActive = MutableStateFlow(false)
 
     /** Called for every new reading (alerts hook in here). */
@@ -73,6 +80,7 @@ class Repository(private val context: Context, val prefs: Prefs) {
         // info refresh while visible
         scope.launch {
             uiActive.collectLatest { ui ->
+                if (ui) uiSince = SystemClock.elapsedRealtime()
                 while (ui && isActive) { refreshInfo(); delay(30_000) }
             }
         }
@@ -87,7 +95,7 @@ class Repository(private val context: Context, val prefs: Prefs) {
                     _conn.value = Conn.Live
                     _error.value = null
                     failures = 0
-                    if (fast) scope.launch { loadRecent(); if (_info.value == null) refreshInfo() }
+                    if (fast) scope.launch { loadRecent(); if (_info.value == null) refreshInfo(); if (_bill.value == null) loadBill() }
                 }) { event, data -> if (event == "live") handle(data) }
             } catch (e: CancellationException) {
                 throw e
@@ -111,6 +119,7 @@ class Repository(private val context: Context, val prefs: Prefs) {
         val d = try { Live.parse(json) } catch (e: Exception) { return }
         val prev = _live.value
         val now = SystemClock.elapsedRealtime()
+        _lastRx.value = now
         if (prev == null || d.seq != prev.seq) {
             val last = _lastMsg.value
             if (last != 0L && prev != null && d.seq == prev.seq + 1) {
@@ -157,7 +166,17 @@ class Repository(private val context: Context, val prefs: Prefs) {
         true
     } catch (_: Exception) { false }
 
+    suspend fun loadBill() {
+        _bill.value = try { BillConfig.parse(String(api.get("/api/bill"))) } catch (_: Exception) { _bill.value ?: return }
+    }
+
+    /** Bill settings live on the monitor so the web dashboard and every phone share them. */
+    suspend fun saveBill(c: BillConfig): Boolean = try {
+        _bill.value = BillConfig.parse(String(api.post("/api/bill", mapOf("v" to c.toJson()))))
+        true
+    } catch (_: Exception) { false }
+
     suspend fun refreshInverter() = runCatching { api.post("/api/refresh", emptyMap()) }.isSuccess
 
-    fun clearCache() { dayCache.clear(); _recent.value = emptyList(); _live.value = null; _info.value = null }
+    fun clearCache() { dayCache.clear(); _recent.value = emptyList(); _live.value = null; _info.value = null; _bill.value = null }
 }

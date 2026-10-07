@@ -62,11 +62,12 @@ private class Flow(val path: Path) {
  * energy is moving, faster and denser with more power.
  */
 @Composable
-fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier) {
+fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boolean = false) {
     val e = LocalEnergy.current
     val cs = MaterialTheme.colorScheme
     val tm = rememberTextMeasurer()
     val live by rememberUpdatedState(d)
+    val frozen by rememberUpdatedState(still)   // monitor offline: nothing moves, last values stay
     val flows = remember {
         listOf(
             Flow(curve(SOLAR, Offset(140f, 78f), Offset(200f, 100f), INV)),
@@ -80,17 +81,24 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) {
+            if (frozen) {
+                // nothing moves: redraw once, then idle instead of drawing every frame
+                frame.longValue = -1L
+                last = 0L
+                kotlinx.coroutines.delay(250)
+                continue
+            }
             androidx.compose.runtime.withFrameMillis { now ->
                 val dt = if (last == 0L) 0f else min(0.1f, (now - last) / 1000f)
                 last = now
                 val x = live
-                val ws = flowWatts(x)
+                val ws = flowWatts(x, frozen)
                 for (i in 0..3) {
                     val frac = min(1f, ws[i] / ratedW.toFloat())
                     if (ws[i] > 0) flows[i].phase = (flows[i].phase + (38f + 150f * sqrt(frac)) * dt) % flows[i].len
                 }
                 val pv = x?.pvW ?: 0
-                if (x?.ok == true && pv >= 8) anim[0] = (anim[0] + dt * 360f / (24f - 21f * min(1f, pv / ratedW.toFloat()))) % 360f
+                if (!frozen && x?.ok == true && pv >= 8) anim[0] = (anim[0] + dt * 360f / (24f - 21f * min(1f, pv / ratedW.toFloat()))) % 360f
                 anim[1] += dt
                 frame.longValue = now
             }
@@ -102,8 +110,8 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier) {
         frame.longValue   // redraw every frame (draw phase only, no recomposition)
         val s = size.width / VW
         val x = live
-        val ok = x?.ok == true
-        val ws = flowWatts(x)
+        val ok = x?.ok == true && !frozen
+        val ws = flowWatts(x, frozen)
         val lineBase = cs.outlineVariant
         val colors = listOf(e.solar, e.grid, e.batt, e.load)
         val reverse = listOf(false, false, (x?.battW ?: 0) > 0, false)
@@ -181,8 +189,8 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier) {
 }
 
 /** Watts flowing on each line: solar, grid, battery, home (0 = idle). */
-private fun flowWatts(x: Live?): FloatArray {
-    if (x == null || !x.ok) return FloatArray(4)
+private fun flowWatts(x: Live?, still: Boolean): FloatArray {
+    if (x == null || !x.ok || still) return FloatArray(4)
     fun f(w: Int) = if (kotlin.math.abs(w) >= 8) kotlin.math.abs(w).toFloat() else 0f
     return floatArrayOf(f(x.pvW), f(x.gridW), f(x.battW), f(x.loadW))
 }

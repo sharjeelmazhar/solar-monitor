@@ -1,6 +1,8 @@
 package com.solarmonitor.app.ui.screens
 
+import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -17,6 +19,10 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material.icons.rounded.WifiOff
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +61,8 @@ import com.solarmonitor.app.ui.fmt2
 import com.solarmonitor.app.ui.fmtDuration
 import com.solarmonitor.app.ui.fmtW
 import com.solarmonitor.app.ui.fmtWh
+import com.solarmonitor.app.ui.hhmm
+import com.solarmonitor.app.ui.rememberStaleMs
 import com.solarmonitor.app.ui.theme.EnergyColors
 import com.solarmonitor.app.ui.theme.LocalEnergy
 import kotlinx.coroutines.delay
@@ -67,6 +75,8 @@ fun LiveScreen(repo: Repository, padding: PaddingValues, wide: Boolean) {
     val info by repo.info.collectAsStateWithLifecycle()
     val rated = info?.rated
     val e = LocalEnergy.current
+    val stale = rememberStaleMs(repo)
+    val offline = d != null && stale != null
 
     LazyColumn(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
@@ -74,7 +84,12 @@ fun LiveScreen(repo: Repository, padding: PaddingValues, wide: Boolean) {
     ) {
         item(key = "flow") {
             SectionCard("Power flow", action = { d?.takeIf { it.ever }?.let { AssistChip(onClick = {}, label = { Text(Decode.modeName(it.mode)) }) } }) {
-                PowerFlow(d, rated?.outW?.takeIf { it > 0 } ?: 3200, Modifier.padding(vertical = 4.dp))
+                Box(contentAlignment = Alignment.Center) {
+                    // offline: last values stay visible but faded and still, with a note on top
+                    val fade = if (!offline) Modifier else Modifier.alpha(0.35f).then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(2.dp) else Modifier)
+                    PowerFlow(d, rated?.outW?.takeIf { it > 0 } ?: 3200, Modifier.padding(vertical = 4.dp).then(fade), still = offline)
+                    if (offline) OfflineBadge(stale!!, d!!.t)
+                }
             }
         }
         val x = d
@@ -82,11 +97,29 @@ fun LiveScreen(repo: Repository, padding: PaddingValues, wide: Boolean) {
             item(key = "wait") { SectionCard(null) { Text(if (x == null) "Connecting to the solar monitor…" else "Waiting for the inverter…", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
             return@LazyColumn
         }
-        val alerts = alertItems(x)
+        val alerts = if (offline) emptyList() else alertItems(x)
         if (alerts.any { it.first > 0 }) item(key = "alerts") { AlertsCard(alerts.filter { it.first > 0 }) }
-        item(key = "now") { NowCard(x, info, e, if (wide) 3 else 2) }
+        item(key = "now") { Box(if (offline) Modifier.alpha(0.45f) else Modifier) { NowCard(x, info, e, if (wide) 3 else 2) } }
         item(key = "today") { TodayCard(x, info) }
         item(key = "chart") { LiveChartCard(repo, e) }
+    }
+}
+
+/** Shown over the power flow when readings stop. */
+@Composable
+private fun OfflineBadge(staleMs: Long, t: Long) {
+    val sec = staleMs / 1000
+    val ago = if (sec < 90) "$sec s ago" else "${fmtDuration(sec / 60.0)} ago"
+    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, shadowElevation = 6.dp, modifier = Modifier.padding(horizontal = 24.dp)) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.WifiOff, null, tint = LocalEnergy.current.crit)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text("Monitor not responding", style = MaterialTheme.typography.titleSmall)
+                Text("Showing the last reading" + (if (t > 0) " from ${hhmm(t)}" else "") + " ($ago). It may be off or out of Wi-Fi range.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
@@ -175,7 +208,7 @@ private fun LiveChartCard(repo: Repository, e: EnergyColors) {
         Spacer(Modifier.size(6.dp))
         LineChart(LongArray(pts.size) { pts[it].t }, all.filter { it.name !in hidden }, from, now,
             yFmt = { if (kotlin.math.abs(it) >= 1000) "${fmt1(it / 1000.0)}k" else "${it.roundToInt()}" }, valueFmt = { fmtW(it) },
-            title = { com.solarmonitor.app.ui.hhmm(pts[it].t) + ":" + String.format(Locale.US, "%02d", (pts[it].t / 1000) % 60) })
+            title = { com.solarmonitor.app.ui.hhmmss(pts[it].t) })
         Text("Battery: above zero = charging, below = supplying the home", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
     }
 }

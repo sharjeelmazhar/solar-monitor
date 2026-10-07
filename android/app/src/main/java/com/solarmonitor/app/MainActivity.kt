@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.PowerOff
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -79,6 +80,7 @@ import com.solarmonitor.app.notify.MonitorService
 import com.solarmonitor.app.ui.screens.EnergyScreen
 import com.solarmonitor.app.ui.screens.HistoryScreen
 import com.solarmonitor.app.ui.screens.LiveScreen
+import com.solarmonitor.app.ui.screens.OutagesScreen
 import com.solarmonitor.app.ui.screens.SettingsScreen
 import com.solarmonitor.app.ui.screens.SystemScreen
 import com.solarmonitor.app.ui.theme.LocalEnergy
@@ -98,13 +100,16 @@ class MainActivity : ComponentActivity() {
                 val style = if (dark) SystemBarStyle.dark(Color.Transparent.toArgb()) else SystemBarStyle.light(Color.Transparent.toArgb(), Color.Transparent.toArgb())
                 enableEdgeToEdge(style, style)
             }
-            SolarTheme(s.theme, s.dynamicColor) { AppRoot(repo) }
+            com.solarmonitor.app.ui.hour12 = s.hour12
+            // key: re-draw every screen (incl. canvases) when the clock format changes
+            androidx.compose.runtime.key(s.hour12) { SolarTheme(s.theme, s.dynamicColor) { AppRoot(repo) } }
         }
     }
 }
 
 private enum class Tab(val label: String, val icon: ImageVector) {
-    Live("Live", Icons.Rounded.Bolt), History("History", Icons.Rounded.History), Energy("Energy", Icons.Rounded.BarChart), System("System", Icons.Rounded.Memory)
+    Live("Live", Icons.Rounded.Bolt), History("History", Icons.Rounded.History), Energy("Energy", Icons.Rounded.BarChart),
+    Outages("Outages", Icons.Rounded.PowerOff), System("System", Icons.Rounded.Memory)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -172,7 +177,7 @@ private fun AppRoot(repo: Repository) {
                 },
                 bottomBar = {
                     if (!wide && !settings) NavigationBar {
-                        Tab.entries.forEach { t -> NavigationBarItem(selected = tab == t, onClick = { tab = t }, icon = { Icon(t.icon, null) }, label = { Text(t.label) }) }
+                        Tab.entries.forEach { t -> NavigationBarItem(selected = tab == t, onClick = { tab = t }, icon = { Icon(t.icon, null) }, label = { Text(t.label, maxLines = 1) }) }
                     }
                 },
             ) { p ->
@@ -182,6 +187,7 @@ private fun AppRoot(repo: Repository) {
                         Tab.Live -> LiveScreen(repo, p, wide)
                         Tab.History -> HistoryScreen(repo, p)
                         Tab.Energy -> EnergyScreen(repo, p)
+                        Tab.Outages -> OutagesScreen(repo, p)
                         Tab.System -> SystemScreen(repo, p)
                     }
                 }
@@ -199,8 +205,9 @@ private fun StatusPill(repo: Repository) {
     LaunchedEffect(Unit) { while (true) { delay(1000); now = SystemClock.elapsedRealtime() } }
     val e = LocalEnergy.current
     val age = if (last > 0) (now - last) / 1000 else -1
+    val stale = com.solarmonitor.app.ui.rememberStaleMs(repo)
     val (text, color) = when {
-        conn == Conn.Offline -> "Offline" to e.crit
+        conn == Conn.Offline || (live != null && stale != null) -> "Offline" to e.crit
         conn != Conn.Live || live == null -> "Connecting" to MaterialTheme.colorScheme.outline
         live?.ever != true -> "No inverter" to e.crit
         live?.ok != true -> "Inverter silent" to e.crit

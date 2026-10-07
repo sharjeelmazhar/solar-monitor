@@ -28,6 +28,7 @@
     GET  /api/days               binary DayRec[] (40 B each), oldest first, today (in progress) last
     POST /api/time    t=<epoch seconds>                      set clock if NTP is not available
     POST /api/settings battAh, tariff, name, tz              user settings
+    GET/POST /api/bill  v=<json, max 1 KB>                    bill estimator settings (opaque to the firmware)
     POST /api/wifi    ssid, pass          (admin auth)       join another network
     GET  /api/scan                                            nearby Wi-Fi networks
     POST /api/refresh                                         re-read inverter ratings now
@@ -76,6 +77,7 @@ char qpiri[160] = "", qid[40] = "", qvfw[40] = "", qflag[40] = "";
 // settings
 float setBattAh = 0, setTariff = 0;
 String setName = "Solar", setTz = TZ_DEFAULT;
+String setBill;   // bill estimator settings: JSON written by the apps, stored as-is
 
 // misc
 bool fsOk = false, mdnsOk = false, apOn = false, rebootPending = false, refreshRated = true;
@@ -707,6 +709,21 @@ static void setupWeb() {
     sendJson(r, buildInfoJson());
   });
 
+  // Stored as-is so the web and phone apps share one set of tariff rules. Only a quick shape check here:
+  // a broken value can only break the bill estimator, which falls back to defaults.
+  server.on("/api/bill", HTTP_GET, [](AsyncWebServerRequest* r) {
+    lock(); String v = setBill; unlock();
+    sendJson(r, v.length() ? v : String("{}"));
+  });
+  server.on("/api/bill", HTTP_POST, [](AsyncWebServerRequest* r) {
+    String v = param(r, "v");
+    bool ok = v.length() >= 2 && v.length() <= 1024 && v[0] == '{' && v[v.length() - 1] == '}';
+    for (size_t i = 0; ok && i < v.length(); i++) if ((uint8_t)v[i] < 0x20) ok = false;
+    if (!ok) { r->send(400, "application/json", "{\"error\":\"bad value\"}"); return; }
+    lock(); setBill = v; prefs.putString("bill", setBill); unlock();
+    sendJson(r, v);
+  });
+
   server.on("/api/refresh", HTTP_POST, [](AsyncWebServerRequest* r) {
     refreshRated = true;
     sendJson(r, "{\"ok\":true}");
@@ -795,6 +812,7 @@ void setup() {
   setTariff = prefs.getFloat("tariff", 0);
   setName = prefs.getString("name", "Solar");
   setTz = prefs.getString("tz", TZ_DEFAULT);
+  setBill = prefs.getString("bill", "");
 
   fsOk = LittleFS.begin(true);   // formats the data partition on first run
   Serial.printf("Storage: %s, %u / %u bytes used\n", fsOk ? "ok" : "FAILED",

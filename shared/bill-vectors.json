@@ -1,0 +1,15 @@
+{
+  "about": "Test cases for the IESCO bill estimate, checked by both web/src/lib/bill.test.ts and the Android unit tests. Default rates (S.R.O. 279(I)/2026), GST 18 %, duty 1.5 %, PTV Rs 35. Worked out by hand; compare with 0.02 tolerance.",
+  "cases": [
+    { "name": "no use, protected", "units": 0, "cfg": {}, "tier": "protected", "energy": 0, "fixed": 200, "total": 271 },
+    { "name": "100 units protected", "units": 100, "cfg": {}, "tier": "protected", "energy": 1054, "fixed": 200, "total": 1530.53 },
+    { "name": "150 protected: previous slab benefit", "units": 150, "cfg": {}, "tier": "protected", "energy": 1704.5, "fixed": 300, "total": 2425.88 },
+    { "name": "200 protected: last protected unit", "units": 200, "cfg": {}, "tier": "protected", "energy": 2355, "fixed": 300, "total": 3203.23 },
+    { "name": "201 protected: billed unprotected, whole month at 201-300 rate", "units": 201, "cfg": {}, "tier": "unprotected", "lost": true, "energy": 6653.1, "fixed": 350, "total": 8398.45 },
+    { "name": "200 unprotected", "units": 200, "cfg": { "st": "u" }, "tier": "unprotected", "energy": 5782, "fixed": 300, "total": 7298.49 },
+    { "name": "201 unprotected", "units": 201, "cfg": { "st": "u" }, "tier": "unprotected", "energy": 6653.1, "fixed": 350, "total": 8398.45 },
+    { "name": "750 unprotected: top slab", "units": 750, "cfg": { "st": "u" }, "tier": "unprotected", "energy": 35400, "fixed": 675, "total": 43134.5 },
+    { "name": "2 kW load with FPA and negative QTA", "units": 150, "cfg": { "kw": 2, "fpa": 1.5, "qta": -1.9857 }, "tier": "protected", "energy": 1704.5, "fixed": 600, "total": 2693.91 },
+    { "name": "fractional units round to the meter's whole units", "units": 99.6, "cfg": {}, "tier": "protected", "energy": 1054, "fixed": 200, "total": 1530.53 }
+  ]
+}

@@ -12,6 +12,7 @@ class SolarApp : Application() {
     override fun onCreate() {
         super.onCreate()
         val prefs = Prefs(this)
+        com.solarmonitor.app.ui.hour12 = prefs.value.hour12
         repo = Repository(this, prefs)
         val alerts = Alerts(this, prefs)
         alerts.createChannels()

@@ -16,6 +16,7 @@ data class Settings(
     val theme: Int = 0,                  // 0 system, 1 light, 2 dark
     val dynamicColor: Boolean = true,
     val askedNotifications: Boolean = false,
+    val hour12: Boolean = true,          // 12-hour clock (AM/PM)
 )
 
 class Prefs(context: Context) {
@@ -37,6 +38,7 @@ class Prefs(context: Context) {
             theme = sp.getInt("theme", d.theme),
             dynamicColor = sp.getBoolean("dynamicColor", d.dynamicColor),
             askedNotifications = sp.getBoolean("askedNotifications", d.askedNotifications),
+            hour12 = sp.getBoolean("hour12", d.hour12),
         )
     }
 
@@ -53,6 +55,7 @@ class Prefs(context: Context) {
             .putInt("theme", s.theme)
             .putBoolean("dynamicColor", s.dynamicColor)
             .putBoolean("askedNotifications", s.askedNotifications)
+            .putBoolean("hour12", s.hour12)
             .apply()
         _state.value = s.copy(host = s.host.trim())
     }

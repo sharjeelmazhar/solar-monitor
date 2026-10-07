@@ -83,3 +83,45 @@ export function outageStats(recs: MinRec[], events: Outage[]): OutageStats {
     monitoredMin: recs.length,
   }
 }
+
+export interface HourMix {
+  hour: number
+  minutes: number // minutes with data
+  offMin: number // minutes without grid
+  solar: number // Wh of home use covered by solar
+  batt: number // Wh covered by the battery
+  grid: number // Wh covered by the grid
+  pv: number // Wh produced by solar (incl. charging the battery)
+}
+
+/**
+ * What powered the home in each hour of the day. Per minute: grid share first (the inverter passes the grid
+ * through), then battery discharge, and solar covers the rest.
+ */
+export function hourlyMix(recs: MinRec[]): HourMix[] {
+  const h: HourMix[] = Array.from({ length: 24 }, (_, hour) => ({ hour, minutes: 0, offMin: 0, solar: 0, batt: 0, grid: 0, pv: 0 }))
+  for (const r of recs) {
+    const x = h[new Date(r.t).getHours()]
+    x.minutes++
+    if (!gridOn(r)) x.offMin++
+    const g = Math.min(r.load, Math.max(0, r.grid))
+    const b = Math.min(r.load - g, Math.max(0, -r.batt))
+    x.grid += g / 60
+    x.batt += b / 60
+    x.solar += Math.max(0, r.load - g - b) / 60
+    x.pv += r.pv / 60
+  }
+  return h
+}
+
+/** Energy used and battery change during an outage, from the minute records it covers. */
+export function duringOutage(recs: MinRec[], o: Outage) {
+  const rs = recs.filter((r) => r.t >= o.start && r.t < o.end)
+  if (!rs.length) return null
+  return {
+    homeWh: rs.reduce((a, r) => a + r.load, 0) / 60,
+    solarWh: rs.reduce((a, r) => a + r.pv, 0) / 60,
+    socFrom: rs[0].soc,
+    socTo: rs[rs.length - 1].soc,
+  }
+}

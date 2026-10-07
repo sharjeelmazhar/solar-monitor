@@ -35,11 +35,26 @@ export function fmtPkr(rs: number): string {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
+
+// 12-hour clock by default (what most people in Pakistan read); the viewer can switch in System.
+let h12 = true
+export const setHour12 = (v: boolean) => { h12 = v }
+
+/** "2:05 PM" or "14:05" */
 export const hhmm = (t: number) => {
   const d = new Date(t)
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const h = d.getHours()
+  return h12 ? `${h % 12 || 12}:${pad(d.getMinutes())} ${h < 12 ? 'AM' : 'PM'}` : `${pad(h)}:${pad(d.getMinutes())}`
 }
-export const hhmmss = (t: number) => hhmm(t) + ':' + pad(new Date(t).getSeconds())
+/** "2:05:09 PM" or "14:05:09" */
+export const hhmmss = (t: number) => {
+  const d = new Date(t)
+  const h = d.getHours()
+  const ms = `${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return h12 ? `${h % 12 || 12}:${ms} ${h < 12 ? 'AM' : 'PM'}` : `${pad(h)}:${ms}`
+}
+/** An hour of the day: "6 AM" / "06:00" */
+export const hourLabel = (h: number) => (h12 ? `${h % 12 || 12} ${h % 24 < 12 ? 'AM' : 'PM'}` : `${pad(h % 24)}:00`)
 
 /** Dates as YYYYMMDD numbers in local time (the device names its files the same way). */
 export const ymd = (d: Date) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()

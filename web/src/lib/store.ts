@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import { parseBill, type BillConfig } from './bill'
 import { parseDays, parseMinutes, parseSamples } from './binary'
 import type { DayRec, Info, Live, MinRec, Sample } from './types'
 
@@ -12,11 +13,13 @@ export interface State {
   info: Info | null
   conn: Conn
   lastMsgAt: number // performance.now() of the last new reading
+  lastRxAt: number // performance.now() of the last message of any kind (heartbeats too)
   intervalMs: number // average time between readings
   recent: Sample[] // last ~16 minutes, for the live chart
+  bill: BillConfig | null // bill estimator settings, shared through the monitor
 }
 
-let state: State = { live: null, info: null, conn: 'connecting', lastMsgAt: 0, intervalMs: 0, recent: [] }
+let state: State = { live: null, info: null, conn: 'connecting', lastMsgAt: 0, lastRxAt: 0, intervalMs: 0, recent: [], bill: null }
 const listeners = new Set<() => void>()
 const set = (p: Partial<State>) => {
   state = { ...state, ...p }
@@ -34,7 +37,7 @@ const intervals: number[] = []
 function onLive(d: Live) {
   const prev = state.live
   const now = performance.now()
-  const p: Partial<State> = { live: d }
+  const p: Partial<State> = { live: d, lastRxAt: now }
   if (!prev || d.seq !== prev.seq) {
     if (prev && state.lastMsgAt && d.seq > prev.seq && d.seq - prev.seq < 20) {
       // readings per second, even when unchanged readings were not pushed
@@ -131,7 +134,7 @@ export function start() {
   if (started) return
   started = true
   connect()
-  refreshInfo().then(loadRecent)
+  refreshInfo().then(loadRecent).then(loadBill)
   setInterval(() => !document.hidden && refreshInfo(), 30_000)
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return
@@ -180,4 +183,42 @@ export async function refreshInverter() {
   } catch {
     /* ignore */
   }
+}
+
+
+async function loadBill() {
+  try {
+    set({ bill: parseBill(await (await fetch(API_BASE + '/api/bill', { cache: 'no-store' })).json()) })
+  } catch {
+    if (!state.bill) set({ bill: parseBill(null) })
+  }
+}
+
+export async function saveBill(c: BillConfig): Promise<boolean> {
+  try {
+    const r = await fetch(API_BASE + '/api/bill', { method: 'POST', body: new URLSearchParams({ v: JSON.stringify(c) }) })
+    if (!r.ok) return false
+    set({ bill: parseBill(await r.json()) })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Readings older than this mean the monitor (or the link to it) is down. Heartbeat is 5 s. */
+export const STALE_MS = 12_000
+
+/**
+ * null while live; otherwise seconds since the last reading (Infinity if none yet).
+ * Re-checks every second so the page reacts even when no message arrives.
+ */
+export function useStale(): number | null {
+  const at = useStore((s) => s.lastRxAt)
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const i = setInterval(() => tick((x) => x + 1), 1000)
+    return () => clearInterval(i)
+  }, [])
+  const age = at ? performance.now() - at : Infinity
+  return age < STALE_MS ? null : age / 1000
 }

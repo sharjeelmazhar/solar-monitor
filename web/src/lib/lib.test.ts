@@ -123,3 +123,23 @@ describe('binary', () => {
     expect(parseSamples(s.buffer)).toEqual([{ t: 1791355680250, pv: 0, load: 0, grid: 0, batt: -30 }])
   })
 })
+
+describe('hourly mix', () => {
+  it('splits home use into grid, battery and solar', async () => {
+    const { hourlyMix } = await import('./outages')
+    const base = new Date(2026, 9, 7, 14, 0).getTime()
+    const rec = (k: number, o: Partial<MinRec>): MinRec => ({ t: base + k * 60_000, pv: 0, load: 600, grid: 0, batt: 0, battV: 26, pvV: 0, gridV: 0, outV: 230, soc: 80, temp: 30, mode: 'B', flags: 1, ...o })
+    const h = hourlyMix([
+      rec(0, { grid: 600 }), // all from grid
+      rec(1, { batt: -600, flags: 0 }), // all from battery, grid off
+      rec(2, { pv: 900, batt: 300 }), // solar runs the home and charges
+      rec(3, { pv: 200, batt: -400 }), // solar 200 + battery 400
+    ])[14]
+    expect(h.minutes).toBe(4)
+    expect(h.offMin).toBe(1)
+    expect(h.grid).toBeCloseTo(10)
+    expect(h.batt).toBeCloseTo(10 + 400 / 60)
+    expect(h.solar).toBeCloseTo(10 + 200 / 60)
+    expect(h.pv).toBeCloseTo(1100 / 60)
+  })
+})

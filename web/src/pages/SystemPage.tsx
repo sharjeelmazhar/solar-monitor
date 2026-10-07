@@ -1,9 +1,10 @@
 import { ExternalLink, Lock, RefreshCw } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
+import { BillSettings } from '../components/BillSettings'
 import { Button, Card, CardHeader, IconButton, Segmented, Switch } from '../components/ui/ui'
 import { BATT_TYPES, CHG_PRIO, CHG_PRIO_HELP, OUT_PRIO, OUT_PRIO_HELP, parseFlags, parseRated } from '../lib/decode'
 import { dayLabel, fmtDuration } from '../lib/format'
-import { use3d, webglAvailable, type Theme } from '../lib/prefs'
+import { use3d, useClock, webglAvailable, type Theme } from '../lib/prefs'
 import { API_BASE, refreshInfo, refreshInverter, saveSettings, useStore } from '../lib/store'
 import { Alerts, alertsOf } from './OverviewPage'
 
@@ -27,9 +28,9 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
   const [busy, setBusy] = useState(false)
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       {d?.ever && <Alerts items={alertsOf(d)} />}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <Card>
           <CardHeader
             title="Inverter settings"
@@ -58,7 +59,7 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
           )}
         </Card>
 
-        <div className="grid content-start gap-4">
+        <div className="grid content-start gap-4 [&>*]:min-w-0">
           <SettingsCard />
           <Card>
             <CardHeader title="Appearance" />
@@ -67,9 +68,11 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
                 <span className="text-sm">Theme</span>
                 <Segmented label="Theme" value={theme} onChange={setTheme} options={[{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]} />
               </div>
+              <ClockFormat />
               <ThreeD />
             </div>
           </Card>
+          <BillSettings />
         </div>
       </div>
 
@@ -126,9 +129,9 @@ function SettingsCard() {
         setTimeout(() => setMsg(''), 3000)
       }}>
         <label className="grid gap-1 text-xs text-text-2">Name<input className={field} value={name} maxLength={30} placeholder="Solar Monitor" onChange={(e) => setName(e.target.value)} /></label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0">
           <label className="grid gap-1 text-xs text-text-2">Battery capacity (Ah)<input className={field} inputMode="decimal" value={ah} placeholder="e.g. 200" onChange={(e) => setAh(e.target.value.replace(/[^\d.]/g, ''))} /></label>
-          <label className="grid gap-1 text-xs text-text-2">Price per unit (Rs/kWh)<input className={field} inputMode="decimal" value={tariff} placeholder="e.g. 60" onChange={(e) => setTariff(e.target.value.replace(/[^\d.]/g, ''))} /></label>
+          <label className="grid gap-1 text-xs text-text-2">Quick price per unit (Rs)<input className={field} inputMode="decimal" value={tariff} placeholder="e.g. 60" onChange={(e) => setTariff(e.target.value.replace(/[^\d.]/g, ''))} /></label>
         </div>
         <div className="flex items-center gap-3">
           <Button variant="primary" type="submit" disabled={!info}>Save</Button>
@@ -136,6 +139,16 @@ function SettingsCard() {
         </div>
       </form>
     </Card>
+  )
+}
+
+function ClockFormat() {
+  const [h12, set] = useClock()
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <span className="text-sm">Time format</span>
+      <Segmented label="Time format" value={h12 ? '12' : '24'} onChange={(v) => set(v === '12')} options={[{ value: '12', label: '2:30 PM' }, { value: '24', label: '14:30' }]} />
+    </div>
   )
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { setHour12 } from './format'
 
 // Per-viewer preferences kept in localStorage (theme, 3D effects). Every access is guarded:
 // storage can be unavailable in private windows.
@@ -53,6 +54,21 @@ function default3d() {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return false
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
   return !(mem && mem <= 2)
+}
+
+// 12 / 24-hour clock. format.ts reads the module value; components re-render through useClock.
+let clock12 = read('clock') !== '24'
+setHour12(clock12)
+const clockListeners = new Set<() => void>()
+export function useClock() {
+  const on = useSyncExternalStore((l) => { clockListeners.add(l); return () => clockListeners.delete(l) }, () => clock12)
+  const set = (v: boolean) => {
+    clock12 = v
+    setHour12(v)
+    write('clock', v ? '12' : '24')
+    clockListeners.forEach((l) => l())
+  }
+  return [on, set] as const
 }
 
 // shared across components so toggling it in System updates the Live page at once

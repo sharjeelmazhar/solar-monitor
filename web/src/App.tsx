@@ -3,8 +3,8 @@ import { motion } from 'motion/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { IconButton, cn } from './components/ui/ui'
 import { hhmmss } from './lib/format'
-import { useTheme, type Theme } from './lib/prefs'
-import { useStore } from './lib/store'
+import { useClock, useTheme, type Theme } from './lib/prefs'
+import { useStale, useStore } from './lib/store'
 import EnergyPage from './pages/EnergyPage'
 import HistoryPage from './pages/HistoryPage'
 import OutagesPage from './pages/OutagesPage'
@@ -34,6 +34,7 @@ function useRoute(): [Tab, (t: Tab) => void] {
 export default function App() {
   const [tab, go] = useRoute()
   const { theme, setTheme, dark } = useTheme()
+  const [h12] = useClock() // re-render every page when the clock format changes
   const name = useStore((s) => s.info?.name)
   const title = name && name !== 'Solar' ? name : 'Solar Monitor'
   useEffect(() => { document.title = title }, [title])
@@ -72,7 +73,7 @@ export default function App() {
       </header>
 
       {/* entry-only fade: an exit animation can stall in throttled/background tabs and block the new page */}
-      <motion.main key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+      <motion.main key={tab + (h12 ? 12 : 24)} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
         {page}
       </motion.main>
 
@@ -125,16 +126,13 @@ function StatusPill() {
   const ok = useStore((s) => s.live?.ok)
   const ever = useStore((s) => s.live?.ever)
   const at = useStore((s) => s.lastMsgAt)
-  const [, tick] = useState(0)
-  useEffect(() => {
-    const i = setInterval(() => tick((x) => x + 1), 1000)
-    return () => clearInterval(i)
-  }, [])
+  const stale = useStale() // also re-renders every second
+  const hasData = useStore((s) => !!s.live)
   const ago = at ? Math.round((performance.now() - at) / 1000) : null
   let text = 'Connecting'
   let tone = 'var(--text-3)'
   let pulse = false
-  if (conn === 'offline') { text = 'Offline'; tone = 'var(--crit)' }
+  if (conn === 'offline' || (hasData && stale != null)) { text = 'Offline'; tone = 'var(--crit)' }
   else if (ever === false) { text = 'No inverter'; tone = 'var(--crit)' }
   else if (ok === false) { text = 'Inverter silent'; tone = 'var(--crit)' }
   else if (conn === 'reconnecting') { text = 'Reconnecting'; tone = 'var(--warn)' }
