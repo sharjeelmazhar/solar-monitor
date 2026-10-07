@@ -3,7 +3,7 @@
 //  Solar Monitor v3 - settings you may want to change
 // ============================================================================
 
-#define FW_VERSION "3.3.0"
+#define FW_VERSION "3.3.1"
 
 // Network name: the dashboard is also reachable at http://solar.local/
 #define HOSTNAME "solar"
@@ -42,11 +42,30 @@
 // Time zone (POSIX format). Pakistan = UTC+5, no daylight saving.
 #define TZ_DEFAULT "PKT-5"
 
-// Wiring (ESP32-C3 Super Mini + MAX3232)
-#define INV_RX_PIN 10   // MAX3232 TXD
-#define INV_TX_PIN 20   // MAX3232 RXD
-#define LED_PIN    8    // onboard LED, ON when LOW
-#define BOOT_BTN_PIN 9  // BOOT button: hold 5 s to forget Wi-Fi and open the setup hotspot
+// Wiring: MAX3232 TXD -> INV_RX_PIN, MAX3232 RXD -> INV_TX_PIN. The board is picked by the Arduino board setting.
+// BOOT button: hold 5 s to forget Wi-Fi and open the setup hotspot.
+#if CONFIG_IDF_TARGET_ESP32C3          // ESP32-C3 Super Mini (4 MB flash)
+#define FW_BOARD     "esp32c3"
+#define INV_RX_PIN   10
+#define INV_TX_PIN   20
+#define LED_PIN      8
+#define LED_ON       LOW
+#define BOOT_BTN_PIN 9
+#elif CONFIG_IDF_TARGET_ESP32S3        // ESP32-S3 DevKitC-1 (N16R8: 16 MB flash, 8 MB PSRAM)
+#define FW_BOARD     "esp32s3"
+#define INV_RX_PIN   18
+#define INV_TX_PIN   17
+#define LED_PIN      -1                 // the RGB LED needs a driver; status shows in the apps instead
+#define LED_ON       HIGH
+#define BOOT_BTN_PIN 0
+#else                                   // classic ESP32 DevKit (ESP32-WROOM-32, micro-USB)
+#define FW_BOARD     "esp32"
+#define INV_RX_PIN   16
+#define INV_TX_PIN   17
+#define LED_PIN      2
+#define LED_ON       HIGH
+#define BOOT_BTN_PIN 0
+#endif
 
 // Inverter polling. At 2400 baud a full QPIGS answer takes ~0.5 s on the wire,
 // so the real update rate is ~1-1.4 per second; MIN_CYCLE_MS only stops the loop

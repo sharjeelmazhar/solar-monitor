@@ -42,6 +42,7 @@
 #include <Update.h>
 #include <esp_wifi.h>
 #include <esp_task_wdt.h>
+#include <esp_ota_ops.h>
 #include <DNSServer.h>
 #include <sys/time.h>
 #include <AsyncTCP.h>
@@ -112,6 +113,29 @@ struct {
   uint8_t battPct = 0, mode = '?', flags = 0;
   int8_t tempMax = -128;
 } acc;
+
+static void ledSet(bool on) {
+  if (LED_PIN >= 0) digitalWrite(LED_PIN, on ? LED_ON : !LED_ON);
+}
+
+// A new firmware starts "on trial": if it can't get back on Wi-Fi within 5 minutes the board restarts and
+// the bootloader goes back to the previous firmware by itself. Once it is on Wi-Fi it is kept.
+extern "C" bool verifyRollbackLater() { return true; }
+static void serviceTrial() {
+  static bool done = false;
+  if (done) return;
+  const esp_partition_t* run = esp_ota_get_running_partition();
+  esp_ota_img_states_t st;
+  if (esp_ota_get_state_partition(run, &st) != ESP_OK || st != ESP_OTA_IMG_PENDING_VERIFY) { done = true; return; }
+  if (WiFi.status() == WL_CONNECTED && millis() > 20000) {
+    esp_ota_mark_app_valid_cancel_rollback();
+    Serial.println("Firmware confirmed");
+    done = true;
+  } else if (millis() > 300000) {
+    Serial.println("New firmware never reached Wi-Fi: going back to the previous one");
+    esp_ota_mark_app_invalid_rollback_and_reboot();
+  }
+}
 
 static bool timeValid() { return time(nullptr) > 1735689600; }   // after 2025-01-01
 
@@ -186,7 +210,7 @@ static String buildInfoJson() {
   jsonSafe(ssid, WiFi.SSID().c_str(), sizeof(ssid));
   char buf[1100];
   snprintf(buf, sizeof(buf),
-    "{\"fw\":\"%s\",\"histVer\":%d,\"name\":\"%s\",\"host\":\"%s\",\"ip\":\"%s\",\"mac\":\"%s\",\"ssid\":\"%s\",\"rssi\":%d,"
+    "{\"fw\":\"%s\",\"board\":\"" FW_BOARD "\",\"histVer\":%d,\"name\":\"%s\",\"host\":\"%s\",\"ip\":\"%s\",\"mac\":\"%s\",\"ssid\":\"%s\",\"rssi\":%d,"
     "\"ap\":%s,\"uptime\":%lu,\"heap\":%lu,\"minHeap\":%lu,\"fsUsed\":%lu,\"fsTotal\":%lu,\"fsOk\":%s,"
     "\"timeOk\":%s,\"time\":%lu,\"tz\":\"%s\",\"clients\":%u,\"histFrom\":%lu,"
     "\"battAh\":%.1f,\"tariff\":%.2f,\"cycDay\":%d,\"cycHour\":%d,\"reset\":%d,"
@@ -492,7 +516,7 @@ static void pollInverter() {
   }
 
   lock(); cycleMs = millis() - t0; unlock();
-  digitalWrite(LED_PIN, (everOk && millis() - lastOkMs < STALE_MS) ? LOW : HIGH);
+  ledSet(everOk && millis() - lastOkMs < STALE_MS);
 }
 
 // ---------- Wi-Fi ----------
@@ -916,8 +940,8 @@ static void setupWeb() {
 // ---------- setup / loop ----------
 void setup() {
   Serial.begin(115200);
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, HIGH);
+  if (LED_PIN >= 0) pinMode(LED_PIN, OUTPUT);
+  ledSet(false);
   dataMux = xSemaphoreCreateMutex();
   Serial1.setRxBufferSize(512);
   Serial1.begin(2400, SERIAL_8N1, INV_RX_PIN, INV_TX_PIN);
@@ -962,7 +986,7 @@ static void serviceButton() {
       WiFi.disconnect(false, true);
       staUpAt = 0;
       startAP();
-      for (int i = 0; i < 6; i++) { digitalWrite(LED_PIN, i & 1); delay(120); }
+      for (int i = 0; i < 6; i++) { ledSet(i & 1); delay(120); }
     }
   } else downAt = 0;
 }
@@ -989,6 +1013,7 @@ void loop() {
   }
   serviceWiFi();
   serviceButton();
+  serviceTrial();
   serviceHealth();
   if (apOn) dns.processNextRequest();
   if (cyc.start && millis() - cycSavedMs > 15UL * 60000) saveCycle();

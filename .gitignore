@@ -29,3 +29,4 @@ Thumbs.db
 # local tool settings
 .claude/
 *.tsbuildinfo
+product-pitch/
