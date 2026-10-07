@@ -234,8 +234,9 @@ function Details({ sel, mix, outs, recs, onClear, pinned }: { sel: Sel; mix: Hou
       items.push({ color: 'var(--batt)', text: <>Battery <b className="num">{d.socFrom}% → {d.socTo}%</b></> })
     }
   }
+  // fixed height: hovering a slice must not resize the card (it would move the clock under the mouse)
   return (
-    <div className="min-h-12 rounded-2xl bg-surface-2 px-4 py-3 text-sm" aria-live="polite">
+    <div className="h-[196px] overflow-y-auto rounded-2xl bg-surface-2 px-4 py-3 text-sm" aria-live="polite">
       {!sel ? (
         <span className="text-text-3">Tap an hour or a red part of the ring to see what happened then.</span>
       ) : (

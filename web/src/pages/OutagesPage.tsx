@@ -96,7 +96,7 @@ export default function OutagesPage() {
 
           <div className={cn('grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]', showAll && 'items-start')}>
             {/* the clock stays in view while the list scrolls next to it */}
-            <Card className={showAll ? 'lg:sticky lg:top-24' : 'flex flex-col'}>
+            <Card className={showAll ? '[@media(min-width:1024px)_and_(min-height:820px)]:sticky top-24' : 'flex flex-col'}>
               <CardHeader
                 title="Day clock" info={<><p>Each slice is one hour. Its colours show what powered the home: <b>yellow</b> solar, <b>green</b> battery, <b>pink</b> grid. Longer slices mean more energy used.</p><p>The outer ring shows the grid: pink when available, <b>red stripes</b> when it was off.</p><p>Tap a slice or a red part for details.</p></>}
                 sub={clockDay === today ? 'Today · midnight at the top' : dayLabel(clockDay, { weekday: 'long', day: 'numeric', month: 'short' })}
