@@ -54,6 +54,16 @@ export function DayClock({ recs, dayStart, outages, now }: { recs: MinRec[]; day
   const frac = (t: number) => Math.min(1, Math.max(0, (t - dayStart) / DAY))
   const pick = (s: Sel) => setPinned((p) => (JSON.stringify(p) === JSON.stringify(s) ? null : s))
   const offTotal = mix.reduce((a, h) => a + h.offMin, 0)
+  // the most lines any hour or outage of this day can show, so the details box is sized once and never jumps
+  const maxRows = useMemo(() => {
+    let rows = outs.length ? 5 : 1
+    for (const h of mix) {
+      if (!h.minutes) continue
+      const off = outs.filter((o) => new Date(o.start).getHours() <= h.hour && new Date(o.end - 1).getHours() >= h.hour).length
+      rows = Math.max(rows, 3 + off + (h.minutes < 55 ? 1 : 0))
+    }
+    return rows
+  }, [mix, outs])
 
   const wedge = (h: HourMix) => {
     const total = h.solar + h.batt + h.grid
@@ -158,7 +168,7 @@ export function DayClock({ recs, dayStart, outages, now }: { recs: MinRec[]; day
         <Key hatch={`url(#${uid}-hatch)`}>Grid off</Key>
       </div>
 
-      <Details sel={sel} mix={mix} outs={outs} recs={recs} onClear={() => setPinned(null)} pinned={!!pinned} />
+      <Details sel={sel} mix={mix} outs={outs} recs={recs} onClear={() => setPinned(null)} pinned={!!pinned} rows={maxRows} />
     </div>
   )
 }
@@ -201,7 +211,7 @@ function CenterText({ sel, mix, outs, offTotal, now }: { sel: Sel; mix: HourMix[
 }
 
 /** One fact per line, each with the colour it has on the clock. */
-function Details({ sel, mix, outs, recs, onClear, pinned }: { sel: Sel; mix: HourMix[]; outs: Outage[]; recs: MinRec[]; onClear: () => void; pinned: boolean }) {
+function Details({ sel, mix, outs, recs, onClear, pinned, rows }: { sel: Sel; mix: HourMix[]; outs: Outage[]; recs: MinRec[]; onClear: () => void; pinned: boolean; rows: number }) {
   let head: React.ReactNode = null
   let items: { color: string; hatch?: boolean; text: React.ReactNode }[] = []
   if (sel?.kind === 'hour') {
@@ -234,12 +244,23 @@ function Details({ sel, mix, outs, recs, onClear, pinned }: { sel: Sel; mix: Hou
       items.push({ color: 'var(--batt)', text: <>Battery <b className="num">{d.socFrom}% → {d.socTo}%</b></> })
     }
   }
-  // fixed height: hovering a slice must not resize the card (it would move the clock under the mouse)
+  if (!sel) {
+    const t = mix.reduce((a, h) => ({ solar: a.solar + h.solar, batt: a.batt + h.batt, grid: a.grid + h.grid, pv: a.pv + h.pv, min: a.min + h.minutes }), { solar: 0, batt: 0, grid: 0, pv: 0, min: 0 })
+    const total = t.solar + t.batt + t.grid
+    const pct = (v: number) => (total > 0 ? Math.round((v / total) * 100) : 0)
+    const off = outs.reduce((a, o) => a + o.minutes, 0)
+    head = <>The whole day{t.min ? <> · home used <span className="num">{fmtWh(total)}</span></> : null}</>
+    items = t.min ? [
+      { color: 'var(--solar)', text: <>Solar: <b className="num">{pct(t.solar)}%</b> of home use · made {fmtWh(t.pv)} in total</> },
+      { color: 'var(--batt)', text: <>Battery: <b className="num">{pct(t.batt)}%</b> ({fmtWh(t.batt)})</> },
+      { color: 'var(--grid)', text: <>Grid: <b className="num">{pct(t.grid)}%</b> ({fmtWh(t.grid)})</> },
+      { color: 'var(--crit)', hatch: true, text: outs.length ? <><b className="num">{outs.length}</b> outage{outs.length > 1 ? 's' : ''}, <b className="num">{fmtDuration(off)}</b> without grid</> : 'No outages' },
+    ] : [{ color: 'var(--text-3)', text: 'The monitor has no data for this day.' }]
+  }
+  // tall enough for the busiest hour of the day: hovering must not resize the card (it would move the clock under the mouse)
   return (
-    <div className="h-[196px] overflow-y-auto rounded-2xl bg-surface-2 px-4 py-3 text-sm" aria-live="polite">
-      {!sel ? (
-        <span className="text-text-3">Tap an hour or a red part of the ring to see what happened then.</span>
-      ) : (
+    <div className="min-h-12 rounded-2xl bg-surface-2 px-4 py-3 text-sm sm:min-h-[var(--dh)]" style={{ '--dh': `${58 + rows * 27}px` } as React.CSSProperties} aria-live="polite">
+      {(
         <>
           <div className="mb-1.5 flex items-center gap-2">
             <b className="flex-1 font-semibold">{head}</b>
@@ -253,6 +274,7 @@ function Details({ sel, mix, outs, recs, onClear, pinned }: { sel: Sel; mix: Hou
               </li>
             ))}
           </ul>
+          {!sel && <p className="mt-2 text-xs text-text-3">Point at or tap an hour, or a red part of the ring, to see what happened then.</p>}
         </>
       )}
     </div>

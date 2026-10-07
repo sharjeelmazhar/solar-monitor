@@ -19,7 +19,6 @@ export default function OutagesPage() {
   const [failed, setFailed] = useState(false)
   const stale = useStale()
   const [clockDay, setClockDay] = useState(today)
-  const [showAll, setShowAll] = useState(false)
 
   const days = useMemo(() => {
     const out: number[] = []
@@ -57,17 +56,15 @@ export default function OutagesPage() {
   const current = events.length && events[events.length - 1].ongoing ? events[events.length - 1] : null
 
   // newest first, grouped by the day the outage started
-  // newest first; only the latest few until "Show all" so the list sits level with the clock
-  const SHORT = 5
   const byDay = useMemo(() => {
     const m = new Map<number, Outage[]>()
-    for (const o of events.slice().reverse().slice(0, showAll ? undefined : SHORT)) {
+    for (const o of events.slice().reverse()) {
       const k = ymd(new Date(o.start))
       if (!m.has(k)) m.set(k, [])
       m.get(k)!.push(o)
     }
     return [...m.entries()]
-  }, [events, showAll])
+  }, [events])
 
   const clockIdx = days.indexOf(clockDay)
   const clockRecs = data.get(clockDay)
@@ -94,9 +91,9 @@ export default function OutagesPage() {
             <Stat className="col-span-2 lg:col-span-1" label="Grid available" value={stats.monitoredMin ? `${Math.round(100 - (stats.totalMin / stats.monitoredMin) * 100)} %` : '–'} hint={`of ${fmtDuration(stats.monitoredMin)} monitored`} />
           </div>
 
-          <div className={cn('grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]', showAll && 'items-start')}>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
             {/* the clock stays in view while the list scrolls next to it */}
-            <Card className={showAll ? '[@media(min-width:1024px)_and_(min-height:820px)]:sticky top-24' : 'flex flex-col'}>
+            <Card className="flex flex-col">
               <CardHeader
                 title="Day clock" info={<><p>Each slice is one hour. Its colours show what powered the home: <b>yellow</b> solar, <b>green</b> battery, <b>pink</b> grid. Longer slices mean more energy used.</p><p>The outer ring shows the grid: pink when available, <b>red stripes</b> when it was off.</p><p>Tap a slice or a red part for details.</p></>}
                 sub={clockDay === today ? 'Today · midnight at the top' : dayLabel(clockDay, { weekday: 'long', day: 'numeric', month: 'short' })}
@@ -116,10 +113,12 @@ export default function OutagesPage() {
               </div>
             </Card>
 
-            <Card>
-              <CardHeader title="What happened" sub="each card is one time the grid went off, newest first" />
+            {/* on wide screens the list is exactly as tall as the clock card and scrolls inside it */}
+            <Card className="flex flex-col">
+              <CardHeader title="What happened" sub={`${events.length} time${events.length === 1 ? '' : 's'} the grid went off, newest first`} />
               {!events.length && <Empty>No outages in this period.</Empty>}
-              <div className="grid gap-4">
+              <div className="relative lg:min-h-0 lg:flex-1">
+              <div className="grid content-start gap-4 lg:absolute lg:inset-0 lg:-mr-2 lg:overflow-y-auto lg:pr-2">
                 {byDay.map(([k, list]) => (
                   <section key={k}>
                     <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-3">
@@ -131,11 +130,7 @@ export default function OutagesPage() {
                   </section>
                 ))}
               </div>
-              {events.length > SHORT && (
-                <button onClick={() => setShowAll(!showAll)} className="focus-ring mt-3 flex min-h-11 w-full items-center justify-center gap-1 rounded-2xl bg-surface-2 text-sm font-medium text-text-2 hover:bg-surface-3 hover:text-text">
-                  {showAll ? 'Show fewer' : `Show all ${events.length} outages`}
-                </button>
-              )}
+              </div>
             </Card>
           </div>
 
