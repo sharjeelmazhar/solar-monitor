@@ -1,6 +1,5 @@
 package com.solarmonitor.app.data
 
-import java.time.LocalTime
 import kotlin.math.max
 
 // Plain-language reading of what is powering the home. Same rules as web/src/lib/power.ts.
@@ -37,12 +36,16 @@ object Power {
     }
 
     /**
-     * Daytime (7 AM to 6 PM, solar already made real power today), grid off, little sun and the battery is carrying
-     * the home: usually clouds, or the grid was switched off and forgotten.
+     * Daytime (90 min after sunrise to 90 min before sunset, see Sun.kt, and solar already made real power today),
+     * grid off, little sun and the battery is carrying the home: usually clouds, or the grid was switched off and
+     * forgotten. A setting sun is not mistaken for clouds.
      */
-    fun weakSolar(d: Live, idleW: Int, now: LocalTime = LocalTime.now()): Boolean {
+    fun weakSolar(d: Live, idleW: Int, now: Long = System.currentTimeMillis()): Boolean {
         if (!d.ok || d.gridOn) return false
-        if (now.hour < 7 || now.hour >= 18 || d.today.pvPeak < 300) return false
+        if (Sun.phase(now) != Sun.Phase.Day || d.today.pvPeak < 300) return false
         return d.pvW < max(80.0, 0.3 * d.loadW) && batt(d, max(idleW, 50)) == Batt.Discharging
     }
+
+    /** Battery current in amps (positive in, negative out), from the inverter's own charge / discharge readings. */
+    fun battAmps(d: Live): Double = if (d.chgA > 0) d.chgA else -d.dischgA
 }

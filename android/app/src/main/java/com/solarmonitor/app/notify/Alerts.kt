@@ -143,7 +143,7 @@ class Alerts(private val context: Context, private val prefs: Prefs) {
         if (s.alertBattLow) {
             if (!lowSent && d.battPct <= s.battLowPct && discharging) {
                 alert(ID_BATT, CH_BATTERY, R.drawable.ic_stat_battery, "Battery low: ${d.battPct}%",
-                    "Giving ${-d.battW} W · ${d.battV} V${if (!d.gridOn) " · grid is off" else ""}", 60)
+                    "Giving ${-d.battW} W · ${String.format(java.util.Locale.US, "%.1f", -Power.battAmps(d))} A · ${d.battV} V${if (!d.gridOn) " · grid is off" else ""}", 60)
                 lowSent = true
             } else if (lowSent && d.battPct >= s.battLowPct + 5) lowSent = false
         }
@@ -154,7 +154,7 @@ class Alerts(private val context: Context, private val prefs: Prefs) {
 
         // little sun during the day while the grid is off: suggest switching the grid on (5 min to confirm, at most hourly)
         if (s.alertWeakSolar) {
-            if (Power.weakSolar(d, s.idleW, LocalTime.now())) {
+            if (Power.weakSolar(d, s.idleW)) {
                 weakClearSince = 0
                 if (weakSince == 0L) weakSince = now
                 if (!weakSent && now - weakSince > 5 * 60_000 && now - weakLastAt > 60 * 60_000) {

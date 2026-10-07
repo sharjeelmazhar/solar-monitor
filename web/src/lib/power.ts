@@ -1,4 +1,5 @@
 import { modeOf } from './decode'
+import { sunPhase } from './sun'
 import type { Live } from './types'
 
 // Plain-language reading of what is powering the home. Same rules as android/.../data/Power.kt.
@@ -43,11 +44,14 @@ export function sourcesSentence(d: Live, idleW: number): string {
 
 /**
  * Daytime, grid off, little sun and the battery is carrying the home: usually clouds (or the grid was switched off
- * and forgotten). Daytime = 7 AM to 6 PM local and solar already made real power today.
+ * and forgotten). Daytime = from 90 min after sunrise to 90 min before sunset (see sun.ts) and solar already made
+ * real power today, so a setting sun is not mistaken for clouds.
  */
 export function weakSolar(d: Live, idleW: number, now = new Date()): boolean {
   if (!d.ok || d.gridOn) return false
-  const h = now.getHours()
-  if (h < 7 || h >= 18 || d.today.pvPeak < 300) return false
+  if (sunPhase(now) !== 'day' || d.today.pvPeak < 300) return false
   return d.pvW < Math.max(80, 0.3 * d.loadW) && battState(d, Math.max(idleW, 50)) === 'discharging'
 }
+
+/** Battery current in amps (positive in, negative out), from the inverter's own charge / discharge readings. */
+export const battAmps = (d: Live): number => (d.chgA > 0 ? d.chgA : -d.dischgA)

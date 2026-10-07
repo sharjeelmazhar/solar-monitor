@@ -6,7 +6,8 @@ import { Card, CardHeader, ChartCard, Segmented, Stat, Value, cn } from '../comp
 import { activeWarnings, modeOf, parseRated, SEVERE, WARNINGS } from '../lib/decode'
 import { fmtDuration, fmtUnits, fmtW, fmtWh, hhmm, hhmmss } from '../lib/format'
 import { use3d, useBattIdle } from '../lib/prefs'
-import { battState, sourcesLabel, sourcesSentence, weakSolar } from '../lib/power'
+import { battAmps, battState, sourcesLabel, sourcesSentence, weakSolar } from '../lib/power'
+import { sunPhase, sunTimes } from '../lib/sun'
 import { useStale, useStore } from '../lib/store'
 import type { Info, Live } from '../lib/types'
 
@@ -91,15 +92,15 @@ function NowTiles({ d, info, battRatedV, float, idleW }: { d: Live | null; info:
     <Card>
       <CardHeader title="Right now" sub={<LiveRate />} />
       <div className="grid grid-cols-2 gap-3">
-        <Tile tone="solar" label="Solar" value={fmtW(d.pvW)} lines={[`${d.pvV.toFixed(1)} V · ${d.pvA.toFixed(1)} A`, `Peak today ${fmtW(d.today.pvPeak)}`]} />
+        <Tile tone="solar" label="Solar" value={fmtW(d.pvW)} lines={[`${d.pvV.toFixed(1)} V · ${d.pvA.toFixed(1)} A`, `Peak today ${fmtW(d.today.pvPeak)}`, sunLine()]} />
         <Tile tone="batt" label="Battery" value={`${d.battPct} %`}
-          lines={[`${d.battV.toFixed(2)} V · ${bs === 'charging' ? 'charging ' + fmtW(d.battW) : bs === 'discharging' ? 'giving ' + fmtW(-d.battW) : 'idle'}`, eta ?? (info && !info.battAh ? 'Add battery Ah in System' : ' ')]}
+          lines={[`${d.battV.toFixed(2)} V · ${Math.abs(battAmps(d)).toFixed(1)} A · ${bs === 'charging' ? 'charging ' + fmtW(d.battW) : bs === 'discharging' ? 'giving ' + fmtW(-d.battW) : 'idle'}`, eta ?? (info && !info.battAh ? 'Add battery Ah in System' : ' ')]}
           bar={d.battPct} barTone={battTone} />
         <Tile tone="load" label="Home" value={fmtW(d.loadW)} lines={[`${d.loadPct}% load · ${d.loadVA} VA`, `${d.outV.toFixed(1)} V · ${d.outHz.toFixed(1)} Hz`]} bar={d.loadPct} />
         <Tile tone="grid" label="Grid (WAPDA)" value={d.gridOn ? `${Math.round(d.gridV)} V` : 'Off'}
           lines={d.gridOn ? [`${d.gridHz.toFixed(1)} Hz · available`, d.gridW > 15 ? `Importing ≈ ${fmtW(d.gridW)}` : 'Not in use'] : ['No grid supply', d.today.outages ? `${d.today.outages} outage${d.today.outages > 1 ? 's' : ''} today` : ' ']} />
         <Tile tone="inv" label="Inverter" value={`${d.tempC} °C`} lines={[sourcesSentence(d, idleW), `Mode: ${modeOf(d.mode).name} · DC bus ${d.busV} V`]} />
-        <Tile tone="text-3" label="Charging" value={charging} small lines={[bs === 'charging' ? `${fmtW(d.battW)} into battery` : ' ', float ? `Float ${float} V` : ' ']} />
+        <Tile tone="text-3" label="Charging" value={charging} small lines={[bs === 'charging' ? `${fmtW(d.battW)} · ${battAmps(d).toFixed(1)} A into battery` : ' ', float ? `Float ${float} V` : ' ']} />
       </div>
     </Card>
   )
@@ -198,7 +199,11 @@ export function alertsOf(d: Live, idleW = 15): AlertItem[] {
   if (d.ok && d.battPct <= 20 && d.battW < 0) out.push({ level: 1, text: `Battery is low (${d.battPct}%)` })
   if (d.tempC >= 60) out.push({ level: 1, text: `Inverter is hot (${d.tempC} °C)` })
   if (weakSolar(d, idleW)) out.push({ level: 1, text: `Little sun right now (cloudy?) and the battery is powering the home (${fmtW(-d.battW)}, battery ${d.battPct}%). Turn the grid on to save the battery.` })
-  else if (!d.gridOn) out.push({ level: 0, text: 'Grid supply is off: running on solar and battery' })
+  else if (!d.gridOn) {
+    const ph = sunPhase()
+    out.push({ level: 0, text: ph === 'day' ? 'Grid supply is off: running on solar and battery'
+      : `Grid supply is off and the sun is ${ph === 'night' ? 'down' : 'low'} (sunset ${hhmm(sunTimes(new Date()).set)}): the battery is carrying the home` })
+  }
   return out
 }
 
@@ -232,4 +237,10 @@ function FlowInfo() {
       <p><b>Grid (est.):</b> the inverter does not measure grid power directly; it is worked out from the home load and what solar and the battery supply.</p>
     </>
   )
+}
+
+/** "Sunrise 6:06 AM · Sunset 5:45 PM" for today (worked out on the device for Islamabad, no internet needed). */
+function sunLine() {
+  const s = sunTimes(new Date())
+  return `Sunrise ${hhmm(s.rise)} · Sunset ${hhmm(s.set)}`
 }

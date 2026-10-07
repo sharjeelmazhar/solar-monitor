@@ -16,6 +16,8 @@ a full pass on real devices before calling it production-ready.
   Outages clock details, settings render.
 
 ## Still to test before production
+- [ ] Sunrise/sunset on the Solar tile match a sun app for Islamabad (±2 min); no "cloudy" alert in the last 90 min before sunset; after sunset with grid off the info line says the sun is down.
+- [ ] Battery amps on the Battery tile match the inverter display / a clamp meter (charging and discharging).
 - [ ] Single notification on a real phone (S24 Ultra, Huawei): grid off → sound once, live timer;
       grid back → "back after X"; reverts to quiet status; nothing doubled on the lock screen.
 - [ ] Android 16 promoted "Grid off" chip / Now Bar (needs a real Android 16 phone).

@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.solarmonitor.app.data.Decode
 import com.solarmonitor.app.data.Power
+import com.solarmonitor.app.data.Sun
 import com.solarmonitor.app.ui.components.EnergyCore3D
 import androidx.compose.foundation.layout.fillMaxWidth
 import com.solarmonitor.app.data.Info
@@ -137,10 +138,10 @@ private fun NowCard(d: Live, info: Info?, e: EnergyColors, cols: Int, idleW: Int
     val battFill = when { d.battPct <= 20 -> e.crit; d.battPct <= 45 -> e.warn; else -> e.batt }
     SectionCard("Right now") {
         Grid(cols, listOf(
-            { m -> KpiTile("Solar", e.solar, fmtW(d.pvW), "${fmt1(d.pvV)} V · ${fmt1(d.pvA)} A", "Peak today ${fmtW(d.today.pvPeak)}", m) },
+            { m -> KpiTile("Solar", e.solar, fmtW(d.pvW), "${fmt1(d.pvV)} V · ${fmt1(d.pvA)} A", "Peak today ${fmtW(d.today.pvPeak)}\n" + Sun.times().let { "Sunrise ${hhmm(it.rise)} · Sunset ${hhmm(it.set)}" }, m) },
             { m ->
                 KpiTile("Battery", e.batt, "${d.battPct} %",
-                    "${fmt2(d.battV)} V · " + when (bs) { Power.Batt.Charging -> "charging ${fmtW(d.battW)}"; Power.Batt.Discharging -> "giving ${fmtW(-d.battW)}"; else -> "idle" },
+                    "${fmt2(d.battV)} V · ${fmt1(kotlin.math.abs(Power.battAmps(d)))} A · " + when (bs) { Power.Batt.Charging -> "charging ${fmtW(d.battW)}"; Power.Batt.Discharging -> "giving ${fmtW(-d.battW)}"; else -> "idle" },
                     battEta(d, info, rated?.battV) ?: if ((info?.battAh ?: 0.0) == 0.0) "Set battery Ah in Settings" else " ",
                     m, progress = d.battPct / 100f, progressColor = battFill)
             },
@@ -153,7 +154,7 @@ private fun NowCard(d: Live, info: Info?, e: EnergyColors, cols: Int, idleW: Int
             { m ->
                 KpiTile("Charging", MaterialTheme.colorScheme.outline,
                     when { d.solarCharging && d.gridCharging -> "Solar + Grid"; d.solarCharging -> "From solar"; d.gridCharging -> "From grid"; else -> "Not charging" },
-                    if (bs == Power.Batt.Charging) "${fmtW(d.battW)} into battery" else "",
+                    if (bs == Power.Batt.Charging) "${fmtW(d.battW)} · ${fmt1(Power.battAmps(d))} A into battery" else "",
                     rated?.let { "Float ${it.float} V · Bulk ${it.bulk} V" } ?: " ", m, smallValue = true)
             },
         ))
@@ -229,7 +230,11 @@ fun alertItems(d: Live, idleW: Int = Power.DEADBAND): List<Pair<Int, String>> {
     if (d.ok && d.battPct <= 20 && d.battW < 0) out += 1 to "Battery is low (${d.battPct}%)"
     if (d.tempC >= 60) out += 1 to "Inverter is hot (${d.tempC} °C)"
     if (Power.weakSolar(d, idleW)) out += 1 to "Little sun right now (cloudy?) and the battery is powering the home (${fmtW(-d.battW)}, battery ${d.battPct}%). Turn the grid on to save the battery."
-    else if (!d.gridOn) out += 0 to "Grid supply is off: running on solar and battery"
+    else if (!d.gridOn) {
+        val ph = Sun.phase()
+        out += 0 to if (ph == Sun.Phase.Day) "Grid supply is off: running on solar and battery"
+        else "Grid supply is off and the sun is ${if (ph == Sun.Phase.Night) "down" else "low"} (sunset ${hhmm(Sun.times().set)}): the battery is carrying the home"
+    }
     return out
 }
 
