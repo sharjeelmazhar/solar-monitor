@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111110" media="(prefers-color-scheme: dark)">
+<title>Solar Monitor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='7' fill='%23eda100'/%3E%3Cg stroke='%23eda100' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M16 2v4M16 26v4M2 16h4M26 16h4M6 6l3 3M23 23l3 3M6 26l3-3M23 9l3-3'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f4f4f2;--card:#fcfcfb;--card2:#f0efec;--line:#e4e3df;--grid:#ebeae6;
+  --t1:#0b0b0b;--t2:#52514e;--t3:#7d7c78;
+  --solar:#eda100;--load:#2a78d6;--batt:#1baf7a;--gridc:#e87ba4;--inv:#4a3aa7;
+  --good:#0ca30c;--warn:#fab219;--serious:#ec835a;--crit:#d03b3b;--goodText:#006300;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.04);
+  --r:18px;
+}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){
+  color-scheme:dark;
+  --bg:#111110;--card:#1a1a19;--card2:#232321;--line:#2c2c2a;--grid:#262624;
+  --t1:#ffffff;--t2:#c3c2b7;--t3:#8f8e86;
+  --solar:#c98500;--load:#3987e5;--batt:#199e70;--gridc:#d55181;--inv:#9085e9;--goodText:#4cc94c;
+  --shadow:none;
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#111110;--card:#1a1a19;--card2:#232321;--line:#2c2c2a;--grid:#262624;
+  --t1:#ffffff;--t2:#c3c2b7;--t3:#8f8e86;
+  --solar:#c98500;--load:#3987e5;--batt:#199e70;--gridc:#d55181;--inv:#9085e9;--goodText:#4cc94c;
+  --shadow:none;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--t1);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  font-variant-numeric:tabular-nums;padding:0 0 calc(24px + env(safe-area-inset-bottom))}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:1280px;margin:0 auto;padding:0 16px}
+header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line)}
+.hd{display:flex;align-items:center;gap:12px;min-height:60px;padding-top:env(safe-area-inset-top)}
+.logo{width:34px;height:34px;flex:none}
+h1{font-size:18px;margin:0;font-weight:650;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:12px;color:var(--t2)}
+.sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:99px;background:var(--card);border:1px solid var(--line);font-size:13px;color:var(--t2);white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--t3)}
+.dot.on{background:var(--good);box-shadow:0 0 0 0 color-mix(in srgb,var(--good) 60%,transparent);animation:pulse 1.6s infinite}
+.dot.bad{background:var(--crit)}
+@keyframes pulse{70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.ib{width:38px;height:38px;border-radius:12px;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;cursor:pointer;flex:none}
+.ib:hover{background:var(--card2)}
+.ib svg{width:19px;height:19px}
+main{display:grid;gap:16px;padding-top:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px;min-width:0}
+.ct{display:flex;align-items:center;gap:8px;margin:0 0 12px}
+.ct h2{font-size:15px;margin:0;font-weight:620}
+.ct .sp{flex:1}
+.muted{color:var(--t2)}.small{font-size:12px}
+.row2{display:grid;gap:16px;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
+@media (max-width:900px){.row2{grid-template-columns:minmax(0,1fr)}}
+/* flow */
+.flow svg{width:100%;height:auto;display:block;max-height:400px;overflow:visible}
+.fl{fill:none;stroke:var(--line);stroke-width:4;stroke-linecap:round;transition:stroke .5s,opacity .5s}
+.nd circle.bgc{fill:var(--card);stroke:var(--line);stroke-width:2;transition:stroke .5s}
+.nv{font-size:19px;font-weight:700;fill:var(--t1);text-anchor:middle;letter-spacing:-.02em}
+.nl{font-size:12px;fill:var(--t2);text-anchor:middle;font-weight:500}
+.rays{transform-box:fill-box;transform-origin:center;animation:spin var(--spin,0s) linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#nBattFill{transition:width .8s,fill .5s}
+#nBattFill.chg{animation:breathe 1.6s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.55}}
+#nHomeFill{transition:y .8s,height .8s}
+#pylon{transition:opacity .4s}
+.flow{background:radial-gradient(ellipse at 50% 52%,color-mix(in srgb,var(--inv) 7%,var(--card)) 0,var(--card) 62%)}
+/* kpis */
+.kpis{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.k{background:var(--card2);border-radius:14px;padding:12px 13px;min-width:0;position:relative}
+.kh{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--t2);font-weight:550;text-transform:uppercase;letter-spacing:.04em}
+.sw{width:10px;height:10px;border-radius:3px;flex:none}
+.kv{font-size:27px;font-weight:700;letter-spacing:-.02em;margin-top:4px;white-space:nowrap}
+.kv small{font-size:15px;font-weight:600;color:var(--t2);margin-left:2px}
+.ks{font-size:13px;color:var(--t2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar{height:6px;border-radius:3px;background:var(--line);margin-top:8px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px;background:var(--batt);width:0;transition:width .6s}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--card);border:1px solid var(--line);color:var(--t1)}
+/* today strip */
+.stats{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.st{padding:10px 12px;border-radius:14px;background:var(--card2)}
+.st b{display:block;font-size:20px;font-weight:700;letter-spacing:-.01em;margin-top:2px}
+.st span{font-size:12px;color:var(--t2)}
+/* charts */
+.chart{position:relative;width:100%;touch-action:pan-y}
+.chart canvas{display:block;width:100%}
+.tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:12px;
+  box-shadow:0 4px 18px rgba(0,0,0,.14);white-space:nowrap;display:none;z-index:2;color:var(--t1)}
+.tip .tt{color:var(--t2);margin-bottom:3px}
+.tip div{display:flex;align-items:center;gap:6px}
+.tip b{margin-left:auto;padding-left:12px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--t2);margin:2px 0 8px}
+.legend label{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+.legend input{display:none}
+.legend label.off{opacity:.4}
+.seg{display:inline-flex;background:var(--card2);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:none;padding:5px 10px;border-radius:8px;font-size:13px;color:var(--t2);cursor:pointer}
+.seg button.on{background:var(--card);color:var(--t1);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.nav{display:flex;align-items:center;gap:6px}
+.nav button{width:32px;height:32px;border-radius:10px;border:1px solid var(--line);background:var(--card);cursor:pointer}
+.nav button:disabled{opacity:.35;cursor:default}
+.nav input{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:4px 8px;height:32px}
+.strip{height:22px;position:relative;margin:4px 0 2px}
+.strip canvas{width:100%;height:22px;display:block;border-radius:6px}
+.lbl{font-size:12px;color:var(--t2);margin:12px 0 4px;display:flex;gap:8px;align-items:center}
+.lbl .sp{flex:1}
+/* lists */
+.kvl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px;margin:0}
+.kvl dt{color:var(--t2)}
+.kvl dd{margin:0;text-align:right;font-weight:550;min-width:0;overflow-wrap:anywhere}
+.alerts{display:grid;gap:8px}
+.al{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--card2);font-size:14px}
+.al svg{width:18px;height:18px;flex:none;margin-top:1px}
+.grid3{display:grid;gap:16px;grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:1000px){.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:680px){.grid3{grid-template-columns:minmax(0,1fr)}.kv{font-size:24px}}
+@media (max-width:330px){.kpis{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:480px){.kv{font-size:22px}.k{padding:11px}.ks{font-size:12px}.hd{gap:8px}.pill{padding:6px 9px}}
+.btn{border:1px solid var(--line);background:var(--card2);border-radius:10px;padding:7px 12px;cursor:pointer;font-size:13px}
+.btn.pri{background:var(--load);border-color:var(--load);color:#fff}
+/* dialog */
+dialog{border:1px solid var(--line);border-radius:20px;background:var(--card);color:var(--t1);padding:0;width:min(520px,calc(100% - 32px));max-height:calc(100% - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+.dlg{padding:18px;display:grid;gap:14px}
+.dlg h3{margin:0;font-size:17px}
+.fld{display:grid;gap:5px;font-size:13px;color:var(--t2)}
+.fld input,.fld select{border:1px solid var(--line);background:var(--card2);border-radius:10px;padding:9px 11px;font-size:15px;color:var(--t1);width:100%}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+hr{border:0;border-top:1px solid var(--line);margin:0}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--t1);color:var(--bg);padding:9px 16px;border-radius:12px;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:20}
+.toast.on{opacity:1}
+.stale .kv,.stale .nv{opacity:.45}
+.foot{text-align:center;font-size:12px;color:var(--t3);padding:8px 0}
+@media (prefers-reduced-motion:reduce){.rays,#nBattFill.chg,.dot.on{animation:none}}
+</style>
+</head>
+<body>
+<header><div class="wrap hd">
+  <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="6.5" fill="var(--solar)"/><g stroke="var(--solar)" stroke-width="2.6" stroke-linecap="round"><path d="M16 2.5v3.5M16 26v3.5M2.5 16H6M26 16h3.5M6.5 6.5l2.4 2.4M23.1 23.1l2.4 2.4M6.5 25.5l2.4-2.4M23.1 8.9l2.4-2.4"/></g></svg>
+  <div style="min-width:0"><h1 id="title">Solar Monitor</h1><div class="sub" id="clock">&nbsp;</div></div>
+  <div class="sp"></div>
+  <span class="pill" id="status"><span class="dot" id="sdot"></span><span id="stxt">Connecting…</span></span>
+  <button class="ib" id="themeBtn" title="Theme" aria-label="Switch theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg></button>
+  <button class="ib" id="setBtn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+</div></header>
+
+<div class="wrap"><main id="main" class="stale">
+
+<section class="row2">
+  <div class="card flow">
+    <div class="ct"><h2>Power flow</h2><div class="sp"></div><span class="badge" id="modeBadge">–</span></div>
+    <svg viewBox="0 0 400 292" role="img" aria-label="Power flow between solar, grid, battery, inverter and home">
+      <defs><clipPath id="homeClip"><path d="M-12 -2 L0 -13 L12 -2 V14 H-12 Z"/></clipPath></defs>
+      <path class="fl" id="pSolar" d="M72 78 C 140 78, 200 100, 200 150"/>
+      <path class="fl" id="pGrid" d="M328 78 C 260 78, 200 100, 200 150"/>
+      <path class="fl" id="pBatt" d="M72 222 C 140 222, 200 200, 200 150"/>
+      <path class="fl" id="pLoad" d="M200 150 C 200 200, 260 222, 328 222"/>
+      <g id="parts"></g>
+      <g class="nd" transform="translate(200 150)"><circle class="bgc" id="rInv" r="29"/>
+        <rect x="-13" y="-15" width="26" height="30" rx="5" fill="none" stroke="var(--inv)" stroke-width="2.2"/>
+        <path d="M-6 -8h12" stroke="var(--inv)" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M-7 4q3.5-8 7 0t7 0" fill="none" stroke="var(--inv)" stroke-width="2.2" stroke-linecap="round"/></g>
+      <g class="nd" transform="translate(72 78)"><circle class="bgc" id="rSolar" r="32"/>
+        <circle r="7.5" fill="var(--solar)"/>
+        <g class="rays" id="sunRays" stroke="var(--solar)" stroke-width="2.4" stroke-linecap="round"><path d="M0 -17v4.5M0 12.5v4.5M-17 0h4.5M12.5 0h4.5M-12 -12l3.2 3.2M8.8 8.8l3.2 3.2M-12 12l3.2-3.2M8.8 -8.8l3.2-3.2"/></g>
+        <text class="nv" y="-44" id="nSolar">–</text><text class="nl" y="50">Solar</text></g>
+      <g class="nd" transform="translate(328 78)"><circle class="bgc" id="rGrid" r="32"/>
+        <g id="pylon" fill="none" stroke="var(--gridc)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M-9 17 L-3 -10 L0 -16 L3 -10 L9 17"/><path d="M-15 -7H15M-11 1H11"/>
+          <path d="M-3 -10 L5 1 M3 -10 L-5 1 M-5.5 1 L7.5 17 M5.5 1 L-7.5 17"/>
+          <path d="M-15 -7v4M15 -7v4M-11 1v4M11 1v4" stroke-width="2.4"/></g>
+        <path id="gridX" d="M-19 19 L19 -19" stroke="var(--crit)" stroke-width="3" stroke-linecap="round" style="display:none"/>
+        <text class="nv" y="-44" id="nGrid">–</text><text class="nl" y="50" id="nGridL">Grid</text></g>
+      <g class="nd" transform="translate(72 222)"><circle class="bgc" id="rBatt" r="32"/>
+        <rect x="-16" y="-10" width="29" height="20" rx="4.5" fill="none" stroke="var(--t2)" stroke-width="2"/>
+        <rect x="14" y="-4.5" width="3.5" height="9" rx="1.5" fill="var(--t2)"/>
+        <rect id="nBattFill" x="-13" y="-7" width="23" height="14" rx="2" fill="var(--batt)"/>
+        <path id="nBolt" d="M0.5 -8 L-5 1 H-0.5 L-1.5 8 L4 -1 H-0.5 Z" fill="var(--card)" stroke="var(--card)" stroke-width=".8" stroke-linejoin="round" style="display:none"/>
+        <text class="nv" y="54" id="nBatt">–</text><text class="nl" y="-42" id="nBattL">Battery</text></g>
+      <g class="nd" transform="translate(328 222)"><circle class="bgc" id="rLoad" r="32"/>
+        <rect id="nHomeFill" x="-14" y="14" width="28" height="0" fill="var(--load)" opacity=".85" clip-path="url(#homeClip)"/>
+        <path d="M-15 -1 L0 -14 L15 -1 M-12 -3.5 V14 H12 V-3.5" fill="none" stroke="var(--load)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <text class="nv" y="54" id="nLoad">–</text><text class="nl" y="-42" id="nLoadL">Home</text></g>
+    </svg>
+  </div>
+  <div class="card">
+    <div class="ct"><h2>Right now</h2><div class="sp"></div><span class="small muted" id="rate"></span></div>
+    <div class="kpis">
+      <div class="k"><div class="kh"><span class="sw" style="background:var(--solar)"></span>Solar</div><div class="kv" id="kSolar">–</div><div class="ks" id="kSolarS">&nbsp;</div><div class="ks" id="kSolarS2">&nbsp;</div></div>
+      <div class="k"><div class="kh"><span class="sw" style="background:var(--batt)"></span>Battery</div><div class="kv" id="kBatt">–</div><div class="ks" id="kBattS">&nbsp;</div><div class="ks" id="kBattS2">&nbsp;</div><div class="bar"><i id="kBattBar"></i></div></div>
+      <div class="k"><div class="kh"><span class="sw" style="background:var(--load)"></span>Home load</div><div class="kv" id="kLoad">–</div><div class="ks" id="kLoadS">&nbsp;</div><div class="ks" id="kLoadS2">&nbsp;</div></div>
+      <div class="k"><div class="kh"><span class="sw" style="background:var(--gridc)"></span>Grid (WAPDA)</div><div class="kv" id="kGrid">–</div><div class="ks" id="kGridS">&nbsp;</div><div class="ks" id="kGridS2">&nbsp;</div></div>
+      <div class="k"><div class="kh"><span class="sw" style="background:var(--inv)"></span>Inverter</div><div class="kv" id="kTemp">–</div><div class="ks" id="kInvS">&nbsp;</div><div class="ks" id="kInvS2">&nbsp;</div></div>
+      <div class="k"><div class="kh"><span class="sw" style="background:var(--t3)"></span>Charging</div><div class="kv" id="kChg" style="font-size:20px;margin-top:8px">–</div><div class="ks" id="kChgS">&nbsp;</div><div class="ks" id="kChgS2">&nbsp;</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="ct"><h2>Today</h2><div class="sp"></div><span class="small muted" id="todayNote"></span></div>
+  <div class="stats">
+    <div class="st"><span>Solar produced</span><b id="tPv">–</b></div>
+    <div class="st"><span>Home used</span><b id="tLoad">–</b></div>
+    <div class="st"><span>From grid (est.)</span><b id="tGrid">–</b></div>
+    <div class="st"><span>Battery in / out</span><b id="tBatt">–</b></div>
+    <div class="st"><span>Self-powered</span><b id="tSelf">–</b></div>
+    <div class="st"><span>Grid available</span><b id="tGridOn">–</b></div>
+    <div class="st"><span>Grid outages</span><b id="tOut">–</b></div>
+    <div class="st" id="tSaveBox"><span>Saved (solar)</span><b id="tSave">–</b></div>
+  </div>
+</section>
+
+<section class="card">
+  <div class="ct"><h2>Live</h2><div class="sp"></div><div class="seg" id="liveRange"><button data-m="5">5 min</button><button data-m="15" class="on">15 min</button></div></div>
+  <div class="legend" id="liveLegend"></div>
+  <div class="chart" id="liveChart"></div>
+</section>
+
+<section class="card">
+  <div class="ct" style="flex-wrap:wrap"><h2>History</h2><div class="sp"></div>
+    <div class="nav"><button id="dPrev" aria-label="Previous day">‹</button><input type="date" id="dPick" aria-label="Day"><button id="dNext" aria-label="Next day">›</button><button class="btn" id="dCsv" title="Download this day as CSV">CSV</button></div>
+  </div>
+  <div class="legend" id="dayLegend"></div>
+  <div class="chart" id="dayChart"></div>
+  <div class="lbl"><span>Battery charge</span><span class="sp"></span><span id="dBattNote"></span></div>
+  <div class="chart" id="socChart"></div>
+  <div class="lbl"><span class="sw" style="background:var(--gridc)"></span><span>Grid available</span><span class="sp"></span><span id="dGridNote"></span></div>
+  <div class="strip"><canvas id="gridStrip"></canvas></div>
+  <div class="small muted" id="dayTotals" style="margin-top:10px"></div>
+</section>
+
+<section class="card">
+  <div class="ct"><h2>Energy per day</h2><div class="sp"></div><div class="seg" id="daysRange"><button data-n="7" class="on">7 days</button><button data-n="30">30 days</button><button data-n="365">Year</button></div></div>
+  <div class="legend" id="barsLegend"></div>
+  <div class="chart" id="barsChart"></div>
+  <div class="small muted" id="rangeTotals" style="margin-top:10px"></div>
+</section>
+
+<section class="grid3">
+  <div class="card"><div class="ct"><h2>Alerts</h2></div><div class="alerts" id="alerts"><div class="muted small">No data yet</div></div></div>
+  <div class="card"><div class="ct"><h2>Inverter</h2><div class="sp"></div><button class="btn" id="refreshInv">Refresh</button></div><dl class="kvl" id="invInfo"><dt>Waiting…</dt><dd></dd></dl></div>
+  <div class="card"><div class="ct"><h2>Monitor device</h2></div><dl class="kvl" id="devInfo"><dt>Waiting…</dt><dd></dd></dl></div>
+</section>
+<div class="foot" id="foot"></div>
+</main></div>
+
+<dialog id="dlg"><form class="dlg" method="dialog" id="setForm">
+  <h3>Settings</h3>
+  <label class="fld">Name<input name="name" maxlength="30" placeholder="Solar"></label>
+  <div class="two">
+    <label class="fld">Battery capacity (Ah)<input name="battAh" type="number" min="0" step="1" placeholder="e.g. 200"></label>
+    <label class="fld">Electricity price (Rs/kWh)<input name="tariff" type="number" min="0" step="0.1" placeholder="e.g. 60"></label>
+  </div>
+  <label class="fld">Theme<select name="theme"><option value="auto">Follow system</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+  <div class="acts"><button class="btn" value="cancel" formnovalidate>Close</button><button class="btn pri" id="saveSet" value="save">Save</button></div>
+  <hr>
+  <h3>Wi-Fi</h3>
+  <div class="small muted" id="wifiNow"></div>
+  <div class="two"><label class="fld">Network<select name="ssid" id="ssidSel"><option value="">Tap Scan…</option></select></label>
+  <label class="fld">Wi-Fi password<input name="wpass" type="password" autocomplete="off"></label></div>
+  <label class="fld">Admin password (from config.h)<input name="admin" type="password" autocomplete="off"></label>
+  <div class="acts"><button class="btn" type="button" id="scanBtn">Scan</button><button class="btn" type="button" id="joinBtn">Join network</button></div>
+  <hr>
+  <div class="acts" style="justify-content:space-between"><a class="btn" href="update" id="fwLink" target="_blank" rel="noopener" style="text-decoration:none">Firmware update</a><span class="small muted" id="fwVer"></span></div>
+</form></dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+// ?host=<device-ip> lets this page run from a PC file while talking to the device
+const HOST = new URLSearchParams(location.search).get('host');
+const BASE = HOST ? 'http://' + HOST : '';
+const $ = id => document.getElementById(id);
+const S = {live: null, info: null, lastMsg: 0, intervals: [], es: null, pollTimer: 0, recent: [], day: null, dayDate: null, days: [], today: 0, histFrom: 0};
+
+// ---------- formatting ----------
+const fmtW = w => { w = +w || 0; const a = Math.abs(w); return a >= 1000 ? (w / 1000).toFixed(a >= 10000 ? 1 : 2) + ' kW' : Math.round(w) + ' W'; };
+const fmtWh = wh => { wh = +wh || 0; return wh >= 1000 ? (wh / 1000).toFixed(wh >= 100000 ? 0 : wh >= 10000 ? 1 : 2) + ' kWh' : Math.round(wh) + ' Wh'; };
+const fmtDur = min => { min = Math.round(min); const h = Math.floor(min / 60), m = min % 60; return h ? h + 'h ' + String(m).padStart(2, '0') + 'm' : m + 'm'; };
+const big = (el, txt) => { const m = /^(-?[\d.]+)\s*(.*)$/.exec(txt); el.innerHTML = m ? m[1] + '<small>' + m[2] + '</small>' : txt; };
+const pad = n => String(n).padStart(2, '0');
+const hm = t => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const hms = t => { const d = new Date(t); return hm(t) + ':' + pad(d.getSeconds()); };
+const ymd = d => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+const ymdToDate = n => new Date(Math.floor(n / 10000), Math.floor(n / 100) % 100 - 1, n % 100);
+const ymdStr = n => { const d = ymdToDate(n); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+const dayLabel = n => ymdToDate(n).toLocaleDateString(undefined, {weekday: 'short', day: 'numeric', month: 'short'});
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 3200); }
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+
+// ---------- theme ----------
+let colors = {};
+function readColors() { const cs = getComputedStyle(document.documentElement); for (const k of ['solar', 'load', 'batt', 'gridc', 'inv', 'grid', 'line', 't1', 't2', 't3', 'card', 'card2', 'good', 'crit']) colors[k] = cs.getPropertyValue('--' + k).trim(); }
+function applyTheme(t) { if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; readColors(); Charts.forEach(c => c.dirty()); drawStrip(); }
+const mq = matchMedia('(prefers-color-scheme: dark)');
+mq.addEventListener && mq.addEventListener('change', () => applyTheme(store('theme') || 'auto'));
+$('themeBtn').onclick = () => {
+  const cur = store('theme') || 'auto', dark = cur === 'dark' || (cur === 'auto' && mq.matches);
+  const next = dark ? 'light' : 'dark'; store('theme', next); applyTheme(next);
+};
+
+// ---------- charts (canvas, no libraries) ----------
+const Charts = [];
+function niceStep(range, n) { const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+class Chart {
+  constructor(host, o) {
+    this.o = Object.assign({h: 240, unit: 'W', fmt: fmtW, gap: 15000, min: null, max: null, kind: 'line', xfmt: hm}, o);
+    this.host = host; this.cv = document.createElement('canvas'); this.tip = document.createElement('div'); this.tip.className = 'tip';
+    host.append(this.cv, this.tip); this.cv.style.height = this.o.h + 'px';
+    this.hidden = new Set(); this.hover = null; this.series = []; this.xs = [];
+    new ResizeObserver(() => this.dirty()).observe(host);
+    const mv = e => { const r = this.cv.getBoundingClientRect(); this.hover = e.clientX - r.left; this.dirty(); };
+    this.cv.addEventListener('pointermove', mv); this.cv.addEventListener('pointerdown', mv);
+    this.cv.addEventListener('pointerleave', () => { this.hover = null; this.dirty(); });
+    Charts.push(this);
+  }
+  set(xs, series, x0, x1) { this.xs = xs; this.series = series; this.x0 = x0; this.x1 = x1; this.dirty(); }
+  legend(el) {
+    this.legendEl = el;
+    el.innerHTML = this.series.map((s, i) => '<label' + (this.hidden.has(s.name) ? ' class="off"' : '') + '><input type="checkbox" data-i="' + i + '"><span class="sw" style="background:var(--' + s.c + ')"></span>' + s.name + '</label>').join('');
+    el.querySelectorAll('input').forEach(inp => inp.onchange = () => { const n = this.series[+inp.dataset.i].name; this.hidden.has(n) ? this.hidden.delete(n) : this.hidden.add(n); this.legend(el); this.dirty(); });
+  }
+  dirty() { if (!this.raf) this.raf = requestAnimationFrame(() => { this.raf = 0; this.draw(); }); }
+  draw() {
+    const o = this.o, dpr = devicePixelRatio || 1, W = this.host.clientWidth, H = o.h;
+    if (!W) return;
+    if (this.cv.width !== Math.round(W * dpr) || this.cv.height !== Math.round(H * dpr)) { this.cv.width = Math.round(W * dpr); this.cv.height = Math.round(H * dpr); }
+    const g = this.cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    const vis = this.series.filter(s => !this.hidden.has(s.name));
+    const L = o.left || 46, R = 8, T = 8, B = 22, pw = W - L - R, ph = H - T - B;
+    let lo = o.min ?? Infinity, hi = o.max ?? -Infinity;
+    if (o.min == null || o.max == null) for (const s of vis) for (const v of s.v) if (v != null) { if (o.min == null && v < lo) lo = v; if (o.max == null && v > hi) hi = v; }
+    if (!isFinite(lo)) lo = 0; if (!isFinite(hi)) hi = 100;
+    if (o.min == null) lo = Math.min(0, lo); if (hi - lo < 1) hi = lo + (o.unit === 'W' ? 100 : 1);
+    const step = niceStep(hi - lo, Math.max(2, Math.round(ph / 46)));
+    if (o.min == null) lo = Math.floor(lo / step) * step; if (o.max == null) hi = Math.ceil(hi / step) * step;
+    const bars = o.kind === 'bars', n = this.xs.length;
+    const x0 = bars ? 0 : (this.x0 ?? this.xs[0]), x1 = bars ? n : (this.x1 ?? this.xs[n - 1]);
+    const X = bars ? i => L + (i + .5) * pw / Math.max(1, n) : t => L + (t - x0) / Math.max(1, x1 - x0) * pw;
+    const Y = v => T + (hi - v) / (hi - lo) * ph;
+    g.font = '11px system-ui,sans-serif'; g.textBaseline = 'middle'; g.lineWidth = 1;
+    for (let v = lo; v <= hi + step / 2; v += step) {
+      const y = Math.round(Y(v)) + .5; g.strokeStyle = Math.abs(v) < step / 1e3 && lo < 0 ? colors.t3 : colors.grid;
+      g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke();
+      g.fillStyle = colors.t2; g.textAlign = 'right'; g.fillText(o.tick ? o.tick(v) : (o.unit === 'W' && Math.abs(hi) >= 2000 ? (v / 1000).toFixed(step < 1000 ? 1 : 0) + 'k' : +v.toFixed(2)) , L - 6, y);
+    }
+    g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+    if (bars) {
+      const every = Math.ceil(n / Math.max(1, Math.floor(pw / 64)));
+      for (let i = 0; i < n; i++) if ((n - 1 - i) % every === 0) { g.fillStyle = colors.t2; g.fillText(o.xfmt(this.xs[i]), X(i), H - 6); }
+    } else if (n || this.x0 != null) {
+      const span = x1 - x0, cand = [60e3, 120e3, 300e3, 600e3, 900e3, 1800e3, 3600e3, 7200e3, 10800e3, 21600e3];
+      const iv = cand.find(c => pw / (span / c) >= 62) || 21600e3;
+      const tz = new Date(x0).getTimezoneOffset() * 60e3;
+      for (let t = Math.ceil((x0 - tz) / iv) * iv + tz; t <= x1; t += iv) { const x = X(t); if (x < L + 14 || x > W - R - 14) continue; g.fillStyle = colors.t2; g.fillText(hm(t), x, H - 6); }
+    }
+    if (!n) { g.fillStyle = colors.t3; g.textAlign = 'center'; g.fillText('No data', L + pw / 2, T + ph / 2); this.tip.style.display = 'none'; return; }
+    g.save(); g.beginPath(); g.rect(L, T - 2, pw, ph + 4); g.clip();
+    if (bars) {
+      const gw = pw / n, k = vis.length, bw = Math.max(2, Math.min(22, (gw * .78 - (k - 1) * 2) / k));
+      vis.forEach((s, j) => {
+        g.fillStyle = colors[s.c];
+        for (let i = 0; i < n; i++) {
+          const v = s.v[i]; if (v == null || v <= 0) continue;
+          const x = X(i) - (k * bw + (k - 1) * 2) / 2 + j * (bw + 2), y = Y(v), h = Y(0) - y, r = Math.min(4, bw / 2, h);
+          g.beginPath(); g.moveTo(x, Y(0)); g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); g.lineTo(x + bw - r, y); g.quadraticCurveTo(x + bw, y, x + bw, y + r); g.lineTo(x + bw, Y(0)); g.fill();
+        }
+      });
+    } else {
+      for (const s of vis) {
+        const col = colors[s.c];
+        const segs = []; let cur = [];
+        for (let i = 0; i < n; i++) {
+          const v = s.v[i];
+          if (v == null || (i && this.xs[i] - this.xs[i - 1] > o.gap)) { if (cur.length) segs.push(cur); cur = []; }
+          if (v != null) cur.push([X(this.xs[i]), Y(v)]);
+        }
+        if (cur.length) segs.push(cur);
+        for (const p of segs) {
+          if (s.area) {
+            g.beginPath(); g.moveTo(p[0][0], Y(Math.max(lo, 0))); p.forEach(q => g.lineTo(q[0], q[1])); g.lineTo(p[p.length - 1][0], Y(Math.max(lo, 0))); g.closePath();
+            g.globalAlpha = .16; g.fillStyle = col; g.fill(); g.globalAlpha = 1;
+          }
+          g.beginPath(); p.forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]));
+          g.strokeStyle = col; g.lineWidth = 2; g.lineJoin = 'round'; g.stroke();
+          if (p.length === 1) { g.fillStyle = col; g.beginPath(); g.arc(p[0][0], p[0][1], 2, 0, 7); g.fill(); }
+        }
+      }
+    }
+    g.restore();
+    // hover
+    if (this.hover == null || this.hover < L || this.hover > W - R) { this.tip.style.display = 'none'; return; }
+    let idx;
+    if (bars) idx = Math.max(0, Math.min(n - 1, Math.floor((this.hover - L) / (pw / n))));
+    else {
+      const t = x0 + (this.hover - L) / pw * (x1 - x0); let a = 0, b = n - 1;
+      while (b - a > 1) { const m = (a + b) >> 1; this.xs[m] < t ? a = m : b = m; }
+      idx = Math.abs(this.xs[a] - t) < Math.abs(this.xs[b] - t) ? a : b;
+      if (Math.abs(this.xs[idx] - t) > (x1 - x0) / pw * 30) { this.tip.style.display = 'none'; return; }
+    }
+    const hx = bars ? X(idx) : X(this.xs[idx]);
+    if (bars) { g.fillStyle = colors.t1; g.globalAlpha = .06; g.fillRect(hx - pw / n / 2, T, pw / n, ph); g.globalAlpha = 1; }
+    else {
+      g.strokeStyle = colors.t3; g.lineWidth = 1; g.beginPath(); g.moveTo(Math.round(hx) + .5, T); g.lineTo(Math.round(hx) + .5, T + ph); g.stroke();
+      for (const s of vis) { const v = s.v[idx]; if (v == null) continue; g.beginPath(); g.arc(hx, Y(v), 4.5, 0, 7); g.fillStyle = colors[s.c]; g.fill(); g.lineWidth = 2; g.strokeStyle = colors.card; g.stroke(); }
+    }
+    this.tip.innerHTML = '<div class="tt">' + (o.tipX ? o.tipX(this.xs[idx]) : bars ? o.xfmt(this.xs[idx]) : hm(this.xs[idx])) + '</div>' +
+      vis.map(s => '<div><span class="sw" style="background:var(--' + s.c + ')"></span>' + s.name + '<b>' + (s.v[idx] == null ? '–' : (s.fmt || o.fmt)(s.v[idx])) + '</b></div>').join('');
+    this.tip.style.display = 'block';
+    const tw = this.tip.offsetWidth; let tx = hx + 14; if (tx + tw > W) tx = hx - 14 - tw; if (tx < 0) tx = 0;
+    this.tip.style.left = tx + 'px'; this.tip.style.top = (T + 4) + 'px';
+  }
+}
+
+const liveChart = new Chart($('liveChart'), {h: 230, gap: 20000});
+const dayChart = new Chart($('dayChart'), {h: 250, gap: 5 * 60e3});
+const socChart = new Chart($('socChart'), {h: 110, min: 0, max: 100, unit: '%', fmt: v => Math.round(v) + '%', gap: 5 * 60e3, tick: v => v + '%'});
+const barsChart = new Chart($('barsChart'), {h: 240, kind: 'bars', fmt: fmtWh, unit: 'Wh', left: 62, tick: v => !v ? '0' : Math.abs(v) >= 1000 ? +(v / 1000).toFixed(2) + ' kWh' : +v.toFixed(1) + ' Wh',
+  xfmt: d => { const x = ymdToDate(d); return S.daysN > 31 ? x.toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : x.toLocaleDateString(undefined, {weekday: 'short', day: 'numeric'}); },
+  tipX: d => dayLabel(d)});
+
+// ---------- live view ----------
+let liveMinutes = 15;
+$('liveRange').onclick = e => { const b = e.target.closest('button'); if (!b) return; liveMinutes = +b.dataset.m; [...$('liveRange').children].forEach(x => x.classList.toggle('on', x === b)); drawLive(); };
+function drawLive() {
+  const now = Date.now(), from = now - liveMinutes * 60e3, r = S.recent;
+  let i = 0; while (i < r.length && r[i].t < from - 5000) i++;
+  const xs = [], pv = [], ld = [], bt = [], gr = [];
+  for (; i < r.length; i++) { const s = r[i]; xs.push(s.t); pv.push(s.pv); ld.push(s.load); bt.push(s.batt); gr.push(s.grid); }
+  liveChart.set(xs, [{name: 'Solar', c: 'solar', v: pv, area: true}, {name: 'Home load', c: 'load', v: ld}, {name: 'Battery (+charge / −use)', c: 'batt', v: bt}, {name: 'Grid (est.)', c: 'gridc', v: gr}], from, now);
+  if (!liveChart.legendEl) liveChart.legend($('liveLegend'));
+}
+async function loadRecent() {
+  try {
+    const buf = await (await fetch(BASE + '/api/recent', {cache: 'no-store'})).arrayBuffer(), dv = new DataView(buf), out = [];
+    for (let o = 0; o + 16 <= buf.byteLength; o += 16) {
+      const t = dv.getUint32(o, true); if (!t) continue;
+      out.push({t: t * 1000 + dv.getUint16(o + 4, true), pv: dv.getUint16(o + 6, true), load: dv.getUint16(o + 8, true), grid: dv.getUint16(o + 10, true), batt: dv.getInt16(o + 12, true)});
+    }
+    const last = out.length ? out[out.length - 1].t : 0;
+    S.recent = out.concat(S.recent.filter(s => s.t > last));
+    drawLive();
+  } catch (e) {}
+}
+
+// ---------- decoding ----------
+const MODES = {L: ['Grid', 'Line mode: grid powers the home'], B: ['Battery / Solar', 'Running from solar and battery'], S: ['Standby', 'Standby'], F: ['Fault', 'Inverter fault'], H: ['Power saving', 'Power saving'], P: ['Power on', 'Starting up'], D: ['Shutdown', 'Shut down']};
+const WARN = {1: 'Inverter fault', 2: 'Bus over-voltage', 3: 'Bus under-voltage', 4: 'Bus soft-start failed', 5: 'Grid not available', 6: 'Output short circuit', 7: 'Inverter voltage too low', 8: 'Inverter voltage too high',
+  9: 'Over temperature', 10: 'Fan locked', 11: 'Battery voltage too high', 12: 'Battery low', 14: 'Battery under-voltage shutdown', 16: 'Overload', 17: 'EEPROM fault', 18: 'Inverter over-current', 19: 'Inverter soft-start failed',
+  20: 'Self-test failed', 21: 'DC voltage on output', 22: 'Battery disconnected', 23: 'Current sensor failed', 24: 'Battery short circuit', 25: 'Power limit active', 26: 'Solar (PV) voltage too high', 27: 'MPPT overload fault', 28: 'MPPT overload warning', 29: 'Battery too low to charge'};
+const SEVERE = new Set([1, 2, 3, 4, 6, 9, 10, 11, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 27]);
+const BATT_TYPE = ['AGM', 'Flooded', 'User defined', 'Pylontech (lithium)', 'Shinheung (lithium)', 'WECO (lithium)', 'Soltaro (lithium)', 'BAK (lithium)', 'Lithium'];
+const OUT_PRIO = ['Utility first (USB)', 'Solar first (SUB)', 'Solar-Battery-Utility (SBU)'];
+const CHG_PRIO = ['Utility first', 'Solar first', 'Solar + Utility', 'Solar only'];
+const FLAGS = {a: 'Buzzer', b: 'Overload bypass', j: 'Power saving', k: 'LCD back to home screen', u: 'Overload auto-restart', v: 'Over-temp auto-restart', x: 'LCD backlight', y: 'Beep on grid loss', z: 'Fault code record'};
+function parseRated(q) {
+  const f = (q || '').trim().split(/\s+/); if (f.length < 20) return null;
+  const n = i => parseFloat(f[i]);
+  return {gridV: n(0), outV: n(2), outHz: n(3), outVA: n(5), outW: n(6), battV: n(7), recharge: n(8), cutoff: n(9), bulk: n(10), float: n(11), battType: +f[12], maxAc: n(13), maxChg: n(14),
+    range: +f[15], outPrio: +f[16], chgPrio: +f[17], machine: f[19], redischarge: f.length > 22 ? n(22) : null};
+}
+
+// ---------- live update ----------
+// Power flow: glowing particles travel along each line in the direction energy moves.
+const NS = 'http://www.w3.org/2000/svg', reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const FLOWS = {Solar: {c: 'solar'}, Grid: {c: 'gridc'}, Batt: {c: 'batt'}, Load: {c: 'load'}};
+for (const k in FLOWS) {
+  const f = FLOWS[k]; f.path = $('p' + k); f.len = f.path.getTotalLength(); f.w = 0; f.rev = false; f.phase = 0; f.dots = [];
+  for (let i = 0; i < 6; i++) {
+    const g = document.createElementNS(NS, 'g'), halo = document.createElementNS(NS, 'circle'), core = document.createElementNS(NS, 'circle');
+    halo.setAttribute('r', 7); halo.setAttribute('fill', 'var(--' + f.c + ')'); halo.setAttribute('opacity', '.22');
+    core.setAttribute('r', 3.6); core.setAttribute('fill', 'var(--' + f.c + ')');
+    g.append(halo, core); g.style.display = 'none'; $('parts').append(g); f.dots.push(g);
+  }
+}
+let flowMax = 3200, flowLast = 0;
+function setFlow(k, w, rev) {
+  const f = FLOWS[k], on = Math.abs(w) >= 8;
+  f.w = on ? Math.abs(w) : 0; f.rev = rev;
+  f.path.style.stroke = on ? 'color-mix(in srgb, var(--' + f.c + ') 38%, var(--line))' : '';
+}
+function flowFrame(ts) {
+  const dt = flowLast ? Math.min(.1, (ts - flowLast) / 1000) : 0; flowLast = ts;
+  for (const k in FLOWS) {
+    const f = FLOWS[k], frac = Math.min(1, f.w / flowMax);
+    const n = f.w ? 2 + Math.round(4 * Math.sqrt(frac)) : 0, speed = 38 + 150 * Math.sqrt(frac);
+    f.phase = (f.phase + speed * dt) % f.len;
+    for (let i = 0; i < 6; i++) {
+      const g = f.dots[i];
+      if (i >= n) { if (g.style.display !== 'none') g.style.display = 'none'; continue; }
+      let s = (f.phase + i * f.len / n) % f.len; if (f.rev) s = f.len - s;
+      const p = f.path.getPointAtLength(s), edge = Math.min(s, f.len - s);
+      g.setAttribute('transform', 'translate(' + p.x.toFixed(1) + ' ' + p.y.toFixed(1) + ')');
+      g.style.opacity = Math.min(1, edge / 30).toFixed(2); g.style.display = '';
+    }
+  }
+  if (!reduceMotion) requestAnimationFrame(flowFrame);
+}
+requestAnimationFrame(flowFrame);
+function ring(id, c, on) { $(id).style.stroke = on ? 'color-mix(in srgb, var(--' + c + ') 70%, var(--card))' : ''; }
+function battEta(d) {
+  const ah = S.info && S.info.battAh, rated = parseRated(S.info && S.info.inv.qpiri), nomV = rated && rated.battV || (d.battV > 40 ? 48 : d.battV > 20 ? 24 : 12);
+  if (!ah) return '';
+  const wh = ah * nomV;
+  if (d.battW < -20) return '≈ ' + fmtDur(wh * d.battPct / 100 / -d.battW * 60) + ' left at this load';
+  if (d.battW > 20 && d.battPct < 100) return '≈ ' + fmtDur(wh * (100 - d.battPct) / 100 / d.battW * 60) + ' to full';
+  return '';
+}
+function onLive(d) {
+  const prev = S.live; S.live = d;
+  const now = performance.now(); if (S.lastMsg && d.seq !== (prev && prev.seq)) { S.intervals.push(now - S.lastMsg); if (S.intervals.length > 10) S.intervals.shift(); }
+  if (!prev || d.seq !== prev.seq) S.lastMsg = now;
+  $('main').classList.toggle('stale', !d.ok);
+  if (!d.ever) { renderStatus(); return; }
+  const md = MODES[d.mode] || ['Unknown', ''];
+  $('modeBadge').textContent = md[0];
+  // flow
+  const maxW = (parseRated(S.info && S.info.inv.qpiri) || {}).outW || 3200; flowMax = maxW;
+  const fresh = d.ok;
+  $('nSolar').textContent = fmtW(d.pvW); $('nLoad').textContent = fmtW(d.loadW);
+  $('nGrid').textContent = d.gridOn ? (d.gridW > 0 ? fmtW(d.gridW) : Math.round(d.gridV) + ' V') : 'Off';
+  $('nGridL').textContent = d.gridOn ? (d.gridW > 0 ? 'Grid · in use' : 'Grid · standby') : 'Grid off';
+  $('pylon').style.opacity = d.gridOn ? 1 : .35; $('gridX').style.display = d.gridOn ? 'none' : '';
+  $('nBatt').textContent = d.battPct + '%';
+  $('nBattL').textContent = d.battW > 8 ? 'Charging' : d.battW < -8 ? 'Discharging' : d.battPct >= 99 ? 'Full' : 'Battery';
+  const bf = $('nBattFill'); bf.setAttribute('width', Math.max(1.5, 23 * d.battPct / 100).toFixed(1));
+  bf.style.fill = d.battPct <= 20 ? 'var(--crit)' : d.battPct <= 45 ? 'var(--warn)' : 'var(--batt)';
+  bf.classList.toggle('chg', d.battW > 8); $('nBolt').style.display = d.battW > 8 ? '' : 'none';
+  const lf = Math.max(0, Math.min(1, d.loadPct / 100)), hh = (27 * Math.max(lf, d.loadW > 0 ? .06 : 0)).toFixed(1);
+  $('nHomeFill').setAttribute('y', (14 - hh).toFixed(1)); $('nHomeFill').setAttribute('height', hh);
+  $('nLoadL').textContent = 'Home · ' + d.loadPct + '%';
+  $('sunRays').style.setProperty('--spin', d.pvW >= 8 ? Math.max(3, 24 - 21 * Math.min(1, d.pvW / maxW)).toFixed(1) + 's' : '0s');
+  setFlow('Solar', fresh ? d.pvW : 0, false); setFlow('Grid', fresh ? d.gridW : 0, false); setFlow('Load', fresh ? d.loadW : 0, false); setFlow('Batt', fresh ? d.battW : 0, d.battW > 0);
+  ring('rSolar', 'solar', fresh && d.pvW >= 8); ring('rGrid', 'gridc', d.gridOn); ring('rBatt', 'batt', fresh && Math.abs(d.battW) >= 8); ring('rLoad', 'load', fresh && d.loadW >= 8); ring('rInv', 'inv', fresh);
+  // kpis
+  big($('kSolar'), fmtW(d.pvW)); $('kSolarS').textContent = d.pvV.toFixed(1) + ' V · ' + d.pvA.toFixed(1) + ' A';
+  $('kSolarS2').textContent = 'Peak today ' + fmtW(d.today.pvPeak);
+  big($('kBatt'), d.battPct + ' %'); $('kBattBar').style.width = d.battPct + '%';
+  $('kBattS').textContent = d.battV.toFixed(2) + ' V · ' + (d.battW > 8 ? '+' + fmtW(d.battW) + ' (' + d.chgA.toFixed(0) + ' A in)' : d.battW < -8 ? '−' + fmtW(-d.battW) + ' (' + d.dischgA.toFixed(0) + ' A out)' : 'idle');
+  $('kBattS2').textContent = battEta(d) || (S.info && !S.info.battAh ? 'Set battery Ah in Settings for time left' : ' ');
+  big($('kLoad'), fmtW(d.loadW)); $('kLoadS').textContent = d.loadPct + '% of capacity · ' + d.loadVA + ' VA';
+  $('kLoadS2').textContent = d.outV.toFixed(1) + ' V · ' + d.outHz.toFixed(1) + ' Hz · PF ' + (d.loadVA ? (d.loadW / d.loadVA).toFixed(2) : '–');
+  if (d.gridOn) { big($('kGrid'), Math.round(d.gridV) + ' V'); $('kGridS').textContent = d.gridHz.toFixed(1) + ' Hz · available'; $('kGridS2').textContent = d.gridW > 0 ? 'Using ≈ ' + fmtW(d.gridW) : 'Not being used'; }
+  else { $('kGrid').textContent = 'Off'; $('kGridS').textContent = 'No grid supply'; $('kGridS2').textContent = d.today.outages ? d.today.outages + ' outage' + (d.today.outages > 1 ? 's' : '') + ' today' : ' '; }
+  big($('kTemp'), d.tempC + ' °C'); $('kInvS').textContent = md[1]; $('kInvS2').textContent = 'DC bus ' + d.busV + ' V';
+  const st = d.st || '', scc = st[6] === '1', ac = st[7] === '1';
+  $('kChg').textContent = scc && ac ? 'Solar + Grid' : scc ? 'From solar' : ac ? 'From grid' : 'Not charging';
+  $('kChgS').textContent = d.battW > 8 ? fmtW(d.battW) + ' into battery' : ' ';
+  $('kChgS2').textContent = (S.info && parseRated(S.info.inv.qpiri)) ? 'Float ' + parseRated(S.info.inv.qpiri).float + ' V · Bulk ' + parseRated(S.info.inv.qpiri).bulk + ' V' : ' ';
+  // today
+  const t = d.today;
+  $('tPv').textContent = fmtWh(t.pv); $('tLoad').textContent = fmtWh(t.load); $('tGrid').textContent = fmtWh(t.grid);
+  $('tBatt').textContent = fmtWh(t.chg) + ' / ' + fmtWh(t.dis);
+  $('tSelf').textContent = t.load > 1 ? Math.round(Math.max(0, Math.min(1, 1 - t.grid / t.load)) * 100) + '%' : '–';
+  $('tGridOn').textContent = t.onlineMin ? fmtDur(t.gridOnMin) : '–'; $('tOut').textContent = t.outages;
+  const tariff = S.info && S.info.tariff;
+  $('tSave').textContent = tariff ? 'Rs ' + Math.round(t.pv / 1000 * tariff).toLocaleString() : 'Set price';
+  $('todayNote').textContent = t.onlineMin ? 'monitored ' + fmtDur(t.onlineMin) : '';
+  // alerts
+  renderAlerts(d);
+  // live chart
+  if (d.ok && d.t && (!prev || d.seq !== prev.seq)) {
+    S.recent.push({t: d.t, pv: d.pvW, load: d.loadW, batt: d.battW, grid: d.gridW});
+    const cut = Date.now() - 16 * 60e3; while (S.recent.length && S.recent[0].t < cut) S.recent.shift();
+    if (!document.hidden) drawLive();
+  }
+  if (t.date && S.today !== t.date) { const first = !S.today; S.today = t.date; if (first) initDays(); else { loadDays(); if (S.dayDate === S.prevToday) showDay(t.date); } S.prevToday = t.date; }
+  renderStatus();
+}
+function renderAlerts(d) {
+  const w = d.warn || '', items = [];
+  if (d.mode === 'F') items.push([2, 'Inverter is in FAULT mode']);
+  for (let i = 0; i < w.length; i++) if (w[i] === '1' && WARN[i] && i !== 5) items.push([SEVERE.has(i) ? 2 : 1, WARN[i]]);
+  if (!d.gridOn) items.push([0, 'Grid supply is off – running on solar/battery']);
+  if (d.ok && d.battPct <= 20 && d.battW < 0) items.push([1, 'Battery is low (' + d.battPct + '%)']);
+  if (d.tempC >= 60) items.push([1, 'Inverter is hot (' + d.tempC + ' °C)']);
+  if (!d.ok) items.push([2, 'No fresh data from inverter: ' + (d.poll.err || 'unknown')]);
+  const ic = ['<svg viewBox="0 0 24 24" fill="none" stroke="' + colors.t2 + '" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h0M12 11v5"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h0"/></svg>',
+    '<svg viewBox="0 0 24 24" fill="none" stroke="var(--crit)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>'];
+  const lab = ['Info', 'Warning', 'Problem'];
+  $('alerts').innerHTML = items.length ? items.map(x => '<div class="al">' + ic[x[0]] + '<div><b>' + lab[x[0]] + ':</b> ' + esc(x[1]) + '</div></div>').join('')
+    : '<div class="al"><svg viewBox="0 0 24 24" fill="none" stroke="var(--good)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><div><b>All good:</b> no warnings from the inverter</div></div>';
+}
+function renderStatus() {
+  const d = S.live, conn = S.es && S.es.readyState === 1, polling = !!S.pollTimer;
+  let txt, cls = '';
+  if (!d) txt = 'Connecting…';
+  else if (!d.ever) { txt = 'Waiting for inverter'; cls = 'bad'; }
+  else if (!d.ok) { txt = 'Inverter not answering'; cls = 'bad'; }
+  else if (!conn && !polling) { txt = 'Reconnecting…'; cls = 'bad'; }
+  else { const ago = (performance.now() - S.lastMsg) / 1000; txt = ago < 3 ? 'Live' : 'Live · ' + Math.round(ago) + 's ago'; cls = 'on'; }
+  if (S.lastMsg && performance.now() - S.lastMsg > 15000 && d && d.ok) { txt = 'No updates'; cls = 'bad'; }
+  $('stxt').textContent = txt; $('sdot').className = 'dot ' + cls;
+  if (S.intervals.length > 2) { const avg = S.intervals.reduce((a, b) => a + b, 0) / S.intervals.length; $('rate').textContent = 'updates every ' + (avg / 1000).toFixed(1) + ' s' + (polling ? ' (polling)' : ''); }
+}
+setInterval(() => {
+  renderStatus();
+  const now = S.live && S.live.t ? new Date(S.live.t + (performance.now() - S.lastMsg)) : new Date();
+  const narrow = innerWidth < 480;
+  $('clock').textContent = now.toLocaleDateString(undefined, narrow ? {weekday: 'short', day: 'numeric', month: 'short'} : {weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'}) + ' · ' + now.toLocaleTimeString(undefined, narrow ? {hour: '2-digit', minute: '2-digit'} : undefined);
+  if (!document.hidden && liveChart.xs.length) drawLive();
+}, 1000);
+
+// ---------- connection: Server-Sent Events, with polling fallback ----------
+function connect() {
+  if (S.es) S.es.close();
+  const es = new EventSource(BASE + '/events'); S.es = es;
+  es.addEventListener('live', e => { try { onLive(JSON.parse(e.data)); } catch (x) {} });
+  es.onopen = () => { stopPolling(); renderStatus(); };
+  es.onerror = () => { renderStatus(); if (!S.pollTimer) S.pollTimer = setTimeout(startPolling, 4000); };
+}
+function startPolling() {
+  if (S.es && S.es.readyState === 1) { S.pollTimer = 0; return; }
+  const tick = async () => {
+    try { const r = await fetch(BASE + '/api/live', {cache: 'no-store'}); onLive(await r.json()); } catch (e) {}
+    if (S.pollTimer) S.pollTimer = setTimeout(tick, 1000);
+  };
+  S.pollTimer = setTimeout(tick, 0);
+}
+function stopPolling() { clearTimeout(S.pollTimer); S.pollTimer = 0; }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (!S.es || S.es.readyState === 2) connect();
+  loadRecent(); if (S.dayDate === S.today) showDay(S.today, true);
+});
+
+// ---------- info ----------
+async function loadInfo() {
+  try {
+    const i = await (await fetch(BASE + '/api/info', {cache: 'no-store'})).json(); S.info = i;
+    if (!i.timeOk) { await fetch(BASE + '/api/time', {method: 'POST', body: new URLSearchParams({t: (Date.now() / 1000).toFixed(0)})}); }
+    renderInfo();
+  } catch (e) {}
+}
+function renderInfo() {
+  const i = S.info; if (!i) return;
+  if (i.histFrom) { S.histFrom = i.histFrom; if (S.dayDate) $('dPrev').disabled = S.dayDate <= S.histFrom; }
+  document.title = (i.name && i.name !== 'Solar' ? i.name + ' · ' : '') + 'Solar Monitor';
+  $('title').textContent = i.name && i.name !== 'Solar' ? i.name : 'Solar Monitor';
+  const r = parseRated(i.inv.qpiri), rows = [];
+  const fw = (i.inv.qvfw || '').replace(/^VERFW:/, '');
+  if (r) {
+    rows.push(['Rated power', r.outW + ' W / ' + r.outVA + ' VA'], ['Battery system', r.battV + ' V · ' + (BATT_TYPE[r.battType] || 'type ' + r.battType)],
+      ['Output priority', OUT_PRIO[r.outPrio] || r.outPrio], ['Charger priority', CHG_PRIO[r.chgPrio] || r.chgPrio],
+      ['Bulk / float', r.bulk + ' V / ' + r.float + ' V'], ['Cut-off / recharge', r.cutoff + ' V / ' + r.recharge + ' V'],
+      ['Max charge current', r.maxChg + ' A (grid ' + r.maxAc + ' A)'], ['AC input range', r.range === 1 ? 'UPS (narrow)' : 'Appliance (wide)']);
+    if (r.redischarge) rows.push(['Back to battery at', r.redischarge + ' V']);
+  }
+  if (i.inv.qid) rows.push(['Serial number', i.inv.qid]);
+  if (fw) rows.push(['Inverter firmware', fw]);
+  const fl = (i.inv.qflag || '').match(/^E([a-z]*)D([a-z]*)$/);
+  if (fl) rows.push(['Enabled', fl[1].split('').map(c => FLAGS[c]).filter(Boolean).join(', ') || '–']);
+  $('invInfo').innerHTML = rows.length ? rows.map(x => '<dt>' + esc(x[0]) + '</dt><dd>' + esc(x[1]) + '</dd>').join('') : '<dt>Ratings not read yet</dt><dd></dd>';
+  const sig = i.rssi > -60 ? 'excellent' : i.rssi > -70 ? 'good' : i.rssi > -80 ? 'fair' : 'weak';
+  const p = S.live && S.live.poll;
+  const dev = [['Address', i.ip + ' · ' + i.host + '.local'], ['Wi-Fi', (i.ssid || '–') + ' · ' + i.rssi + ' dBm (' + sig + ')'], ['Up for', fmtDur(i.uptime / 60)],
+    ['Clock', i.timeOk ? 'synced' : 'not set'], ['History stored', i.histFrom ? 'since ' + dayLabel(i.histFrom) : 'starting today'],
+    ['Storage', i.fsTotal ? Math.round(i.fsUsed / 1024) + ' / ' + Math.round(i.fsTotal / 1024) + ' KB' : 'unavailable'], ['Free memory', Math.round(i.heap / 1024) + ' KB'],
+    ['Readings', p ? p.ok.toLocaleString() + ' ok · ' + p.fail + ' failed · ' + p.crc + ' CRC' : '–'], ['Read cycle', p ? p.ms + ' ms' : '–'], ['Viewers', i.clients], ['Firmware', 'v' + i.fw]];
+  $('devInfo').innerHTML = dev.map(x => '<dt>' + esc(x[0]) + '</dt><dd>' + esc(x[1]) + '</dd>').join('');
+  $('foot').textContent = 'Solar Monitor v' + i.fw + ' · data stays on your network';
+  $('fwVer').textContent = 'v' + i.fw; $('fwLink').href = BASE + '/update';
+  $('tSaveBox').title = i.tariff ? 'Solar energy × Rs ' + i.tariff + '/kWh' : 'Set the electricity price in Settings';
+}
+$('refreshInv').onclick = async () => { try { await fetch(BASE + '/api/refresh', {method: 'POST'}); toast('Reading inverter settings…'); setTimeout(loadInfo, 4000); } catch (e) {} };
+
+// ---------- one day ----------
+function parseDay(buf) {
+  const dv = new DataView(buf), out = [];
+  for (let o = 0; o + 24 <= buf.byteLength; o += 24) out.push({t: dv.getUint32(o, true) * 1000, pv: dv.getUint16(o + 4, true), load: dv.getUint16(o + 6, true), grid: dv.getUint16(o + 8, true),
+    batt: dv.getInt16(o + 10, true), battV: dv.getUint16(o + 12, true) / 100, pvV: dv.getUint16(o + 14, true) / 10, gridV: dv.getUint16(o + 16, true) / 10, outV: dv.getUint16(o + 18, true) / 10,
+    soc: dv.getUint8(o + 20), temp: dv.getInt8(o + 21), mode: String.fromCharCode(dv.getUint8(o + 22)), flags: dv.getUint8(o + 23)});
+  return out;
+}
+const dayCache = {};
+async function showDay(date, force) {
+  S.dayDate = date; $('dPick').value = ymdStr(date);
+  $('dNext').disabled = date >= S.today; $('dPrev').disabled = S.histFrom && date <= S.histFrom;
+  let recs = !force && date !== S.today && dayCache[date];
+  if (!recs) {
+    try {
+      const r = await fetch(BASE + '/api/day?d=' + date, {cache: 'no-store'});
+      recs = r.ok ? parseDay(await r.arrayBuffer()) : [];
+      if (date !== S.today) dayCache[date] = recs;
+    } catch (e) { recs = []; }
+  }
+  if (S.dayDate !== date) return;
+  S.day = recs;
+  const d0 = ymdToDate(date).getTime(), d1 = d0 + 864e5, xs = recs.map(r => r.t);
+  dayChart.set(xs, [{name: 'Solar', c: 'solar', v: recs.map(r => r.pv), area: true}, {name: 'Home load', c: 'load', v: recs.map(r => r.load)}, {name: 'Battery (+charge / −use)', c: 'batt', v: recs.map(r => r.batt)}, {name: 'Grid (est.)', c: 'gridc', v: recs.map(r => r.grid)}], d0, d1);
+  if (!dayChart.legendEl) dayChart.legend($('dayLegend'));
+  socChart.set(xs, [{name: 'Battery', c: 'batt', v: recs.map(r => r.soc), fmt: v => v + '%'}], d0, d1);
+  socChart.o.tipX = t => { const r = recs[xs.indexOf(t)]; return hm(t) + (r ? ' · ' + r.battV.toFixed(2) + ' V' : ''); };
+  if (recs.length) { const s = recs.map(r => r.soc); $('dBattNote').textContent = 'min ' + Math.min(...s) + '% · max ' + Math.max(...s) + '%'; } else $('dBattNote').textContent = '';
+  drawStrip();
+  const tot = recs.reduce((a, r) => (a.pv += r.pv / 60, a.load += r.load / 60, a.grid += r.grid / 60, a.on += r.flags & 1, a), {pv: 0, load: 0, grid: 0, on: 0});
+  $('dGridNote').textContent = recs.length ? fmtDur(tot.on) + ' of ' + fmtDur(recs.length) + ' monitored' : '';
+  $('dayTotals').textContent = recs.length ? dayLabel(date) + ': solar ' + fmtWh(tot.pv) + ' · home ' + fmtWh(tot.load) + ' · grid ' + fmtWh(tot.grid) + ' · peak solar ' + fmtW(Math.max(...recs.map(r => r.pv))) : 'No history recorded for ' + dayLabel(date) + '.';
+}
+function drawStrip() {
+  const cv = $('gridStrip'), W = cv.clientWidth, H = 22, dpr = devicePixelRatio || 1;
+  if (!W || !S.dayDate) return;
+  cv.width = W * dpr; cv.height = H * dpr; const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = colors.card2; g.fillRect(0, 0, W, H);
+  const L = 46, R = 8, pw = W - L - R, d0 = ymdToDate(S.dayDate).getTime();
+  g.fillStyle = colors.t2; g.font = '11px system-ui,sans-serif'; g.textBaseline = 'middle'; g.textAlign = 'right'; g.fillText('Grid', L - 6, H / 2);
+  g.fillStyle = colors.line; g.fillRect(L, 4, pw, H - 8);
+  for (const r of S.day || []) {
+    const x = L + (r.t - d0) / 864e5 * pw, w = Math.max(1, pw / 1440 + .5);
+    g.fillStyle = (r.flags & 1) ? colors.gridc : colors.t3; g.globalAlpha = (r.flags & 1) ? 1 : .35; g.fillRect(x, 4, w, H - 8);
+  }
+  g.globalAlpha = 1;
+}
+$('dPrev').onclick = () => { const d = ymdToDate(S.dayDate); d.setDate(d.getDate() - 1); showDay(ymd(d)); };
+$('dNext').onclick = () => { const d = ymdToDate(S.dayDate); d.setDate(d.getDate() + 1); showDay(ymd(d)); };
+$('dPick').onchange = e => { const v = e.target.value; if (v) showDay(+v.replace(/-/g, '')); };
+$('dCsv').onclick = () => {
+  if (!S.day || !S.day.length) return toast('No data for this day');
+  const rows = ['time,solar_W,load_W,grid_W_est,battery_W,battery_pct,battery_V,pv_V,grid_V,output_V,inverter_C,mode,grid_present'];
+  for (const r of S.day) { const d = new Date(r.t); rows.push(ymdStr(S.dayDate) + ' ' + hm(r.t) + ',' + [r.pv, r.load, r.grid, r.batt, r.soc, r.battV, r.pvV, r.gridV, r.outV, r.temp, r.mode, r.flags & 1].join(',')); }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rows.join('\n')], {type: 'text/csv'})); a.download = 'solar-' + ymdStr(S.dayDate) + '.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+setInterval(() => { if (S.dayDate && S.dayDate === S.today && !document.hidden) showDay(S.today, true); }, 60e3);
+
+// ---------- energy per day ----------
+S.daysN = 7;
+$('daysRange').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.daysN = +b.dataset.n; [...$('daysRange').children].forEach(x => x.classList.toggle('on', x === b)); drawBars(); };
+async function loadDays() {
+  try {
+    const buf = await (await fetch(BASE + '/api/days', {cache: 'no-store'})).arrayBuffer(), dv = new DataView(buf), out = [];
+    for (let o = 0; o + 40 <= buf.byteLength; o += 40) out.push({date: dv.getUint32(o, true), pv: dv.getFloat32(o + 4, true), load: dv.getFloat32(o + 8, true), grid: dv.getFloat32(o + 12, true),
+      chg: dv.getFloat32(o + 16, true), dis: dv.getFloat32(o + 20, true), gridOn: dv.getUint16(o + 28, true), online: dv.getUint16(o + 30, true), outages: dv.getUint8(o + 35)});
+    S.days = out; drawBars();
+  } catch (e) {}
+}
+function drawBars() {
+  const n = S.daysN, map = {}; S.days.forEach(d => map[d.date] = d);
+  if (S.live && S.live.today && S.live.today.date) { const t = S.live.today; map[t.date] = {date: t.date, pv: t.pv, load: t.load, grid: t.grid, gridOn: t.gridOnMin, online: t.onlineMin, outages: t.outages}; }
+  const end = S.today ? ymdToDate(S.today) : new Date(), xs = [], rows = [];
+  for (let i = n - 1; i >= 0; i--) { const d = new Date(end); d.setDate(d.getDate() - i); const k = ymd(d); xs.push(k); rows.push(map[k]); }
+  const first = rows.findIndex(Boolean); const xs2 = n > 31 && first > 0 ? xs.slice(first) : xs, rows2 = n > 31 && first > 0 ? rows.slice(first) : rows;
+  barsChart.set(xs2, [{name: 'Solar', c: 'solar', v: rows2.map(r => r ? r.pv : null)}, {name: 'Home load', c: 'load', v: rows2.map(r => r ? r.load : null)}, {name: 'Grid (est.)', c: 'gridc', v: rows2.map(r => r ? r.grid : null)}]);
+  if (!barsChart.legendEl) barsChart.legend($('barsLegend'));
+  const tot = rows2.filter(Boolean).reduce((a, r) => (a.pv += r.pv, a.load += r.load, a.grid += r.grid, a.on += r.gridOn, a.min += r.online, a.out += r.outages, a.n++, a), {pv: 0, load: 0, grid: 0, on: 0, min: 0, out: 0, n: 0});
+  const tariff = S.info && S.info.tariff;
+  $('rangeTotals').textContent = tot.n ? tot.n + ' day' + (tot.n > 1 ? 's' : '') + ': solar ' + fmtWh(tot.pv) + ' · home ' + fmtWh(tot.load) + ' · grid ' + fmtWh(tot.grid) +
+    (tot.load ? ' · ' + Math.round(Math.max(0, 1 - tot.grid / tot.load) * 100) + '% self-powered' : '') + (tot.min ? ' · grid available ' + Math.round(tot.on / tot.min * 100) + '% of the time, ' + tot.out + ' outages' : '') +
+    (tariff ? ' · saved ≈ Rs ' + Math.round(tot.pv / 1000 * tariff).toLocaleString() : '') : 'Daily totals will appear here as history builds up.';
+}
+async function initDays() {
+  S.histFrom = S.info && S.info.histFrom || S.today;
+  showDay(S.today); loadDays();
+}
+setInterval(() => { if (!document.hidden) { drawBars(); } }, 60e3);
+setInterval(() => { if (!document.hidden) { loadInfo(); } }, 30e3);
+
+// ---------- settings ----------
+$('setBtn').onclick = () => {
+  const f = $('setForm'), i = S.info || {};
+  f.name.value = i.name && i.name !== 'Solar' ? i.name : ''; f.battAh.value = i.battAh || ''; f.tariff.value = i.tariff || ''; f.theme.value = store('theme') || 'auto';
+  $('wifiNow').textContent = i.ssid ? 'Connected to ' + i.ssid + ' (' + i.rssi + ' dBm)' : ''; $('dlg').showModal();
+};
+$('setForm').addEventListener('submit', async e => {
+  if (e.submitter && e.submitter.value !== 'save') return;
+  const f = $('setForm'); store('theme', f.theme.value); applyTheme(f.theme.value);
+  try {
+    const r = await fetch(BASE + '/api/settings', {method: 'POST', body: new URLSearchParams({name: f.name.value || 'Solar', battAh: f.battAh.value || '0', tariff: f.tariff.value || '0'})});
+    S.info = await r.json(); renderInfo(); drawBars(); if (S.live) onLive(S.live); toast('Settings saved');
+  } catch (x) { toast('Could not save settings'); }
+});
+$('scanBtn').onclick = async () => {
+  const sel = $('ssidSel'); sel.innerHTML = '<option>Scanning…</option>';
+  for (let k = 0; k < 12; k++) {
+    try {
+      const j = await (await fetch(BASE + '/api/scan', {cache: 'no-store'})).json();
+      if (!j.scanning) { const seen = new Set(); sel.innerHTML = j.nets.sort((a, b) => b.rssi - a.rssi).filter(n => n.ssid && !seen.has(n.ssid) && seen.add(n.ssid)).map(n => '<option value="' + esc(n.ssid) + '">' + esc(n.ssid) + ' (' + n.rssi + ' dBm)</option>').join('') || '<option value="">None found</option>'; return; }
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  sel.innerHTML = '<option value="">Scan failed</option>';
+};
+$('joinBtn').onclick = async () => {
+  const f = $('setForm'); if (!f.ssid.value) return toast('Pick a network first');
+  if (!confirm('Move the monitor to "' + f.ssid.value + '"? It will drop off this network if the password is wrong.')) return;
+  try {
+    const r = await fetch(BASE + '/api/wifi', {method: 'POST', headers: {Authorization: 'Basic ' + btoa('admin:' + f.admin.value)}, body: new URLSearchParams({ssid: f.ssid.value, pass: f.wpass.value})});
+    toast(r.ok ? 'Joining ' + f.ssid.value + '…' : r.status === 401 ? 'Wrong admin password' : 'Failed');
+  } catch (e) { toast('Request failed'); }
+};
+
+// ---------- start ----------
+applyTheme(store('theme') || 'auto');
+connect();
+loadInfo().then(loadRecent);
+addEventListener('resize', drawStrip);
+</script>
+</body>
+</html>

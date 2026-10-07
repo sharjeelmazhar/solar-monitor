@@ -1,0 +1,27 @@
+# --- private: never publish ---
+# official-app captures, home/hardware photos, latency logs
+research/
+# raw flash dump of the ESP32 (contains the saved Wi-Fi login)
+backup/
+video/
+dist/
+.env
+.env.*
+!.env.example
+**/secrets.h
+*.keystore
+*.jks
+keystore.properties
+
+# --- build outputs ---
+node_modules/
+**/build-out/
+firmware/**/build/
+logger/data/
+*.log
+*.err
+coverage/
+playwright-report/
+test-results/
+.DS_Store
+Thumbs.db

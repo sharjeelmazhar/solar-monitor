@@ -1,0 +1,4 @@
+#!/bin/sh
+# Blocks a commit if it contains secrets or breaks the fast tests.
+# Enabled with: git config core.hooksPath .githooks
+exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(git rev-parse --show-toplevel)/scripts/precommit.ps1"
