@@ -50,7 +50,9 @@ import com.solarmonitor.app.data.Conn
 import com.solarmonitor.app.data.Discovery
 import com.solarmonitor.app.data.Repository
 import com.solarmonitor.app.notify.MonitorService
+import com.solarmonitor.app.ui.components.ScreenList
 import com.solarmonitor.app.ui.components.SectionCard
+import com.solarmonitor.app.ui.components.full
 import kotlinx.coroutines.launch
 
 @SuppressLint("BatteryLife")
@@ -78,10 +80,7 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
     val battLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { unrestricted = pm.isIgnoringBatteryOptimizations(ctx.packageName) }
     LaunchedEffect(Unit) { if (info == null) repo.refreshInfo(); if (bill == null) repo.loadBill() }
 
-    LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
+    ScreenList(padding) {
         item(key = "conn") {
             SectionCard("Solar monitor") {
                 Text(

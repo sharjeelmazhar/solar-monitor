@@ -67,6 +67,7 @@ private val FIELDS = listOf(
     Field("Fuel adj. FPA (Rs/unit)", "the \"@\" rate next to FPA", true), Field("Quarterly adj. (Rs/unit)", "QTR. TARIFF ADJ ÷ units", true),
     Field("F.C. surcharge (Rs/unit)", "F.C SURCHARGE ÷ units"), Field("Other units / month", "use the monitor can't see"),
     Field("Sales tax (%)", null), Field("Electricity duty (%)", "ED@ on the bill"), Field("TV fee (Rs)", "0 if your bill has none"),
+    Field("Reading time (hour 0-23)", "20 = 8 PM: the new month starts then"),
 )
 
 /** IESCO bill settings, stored on the monitor so the web dashboard and other phones use the same values. */
@@ -75,7 +76,7 @@ fun BillSettingsCard(repo: Repository, saved: BillConfig?, toast: (String) -> Un
     val c = saved ?: BillConfig()
     val scope = rememberCoroutineScope()
     var prot by remember(saved) { mutableStateOf(c.protected) }
-    val f = remember(saved) { mutableStateListOf(n(c.kw), c.day.toString(), n(c.fpa), n(c.qta), n(c.fc), n(c.extra), n(c.gst), n(c.ed), n(c.ptv)) }
+    val f = remember(saved) { mutableStateListOf(n(c.kw), c.day.toString(), n(c.fpa), n(c.qta), n(c.fc), n(c.extra), n(c.gst), n(c.ed), n(c.ptv), c.hr.toString()) }
     val ps = remember(saved) { mutableStateListOf(*slabRows(c.ps).toTypedArray()) }
     val us = remember(saved) { mutableStateListOf(*slabRows(c.us).toTypedArray()) }
     var rates by remember { mutableStateOf(false) }
@@ -84,7 +85,7 @@ fun BillSettingsCard(repo: Repository, saved: BillConfig?, toast: (String) -> Un
     fun draft(hist: List<PastBill> = c.hist): BillConfig {
         fun d(i: Int) = f[i].toDoubleOrNull()
         fun slabs(l: List<List<String>>) = l.map { r -> Slab(r[0].toDoubleOrNull()?.toInt() ?: -1, r[1].toDoubleOrNull() ?: -1.0, r[2].toDoubleOrNull() ?: -1.0) }
-        val raw = BillConfig(prot, d(0) ?: c.kw, d(1)?.toInt() ?: c.day, slabs(ps), slabs(us), d(4) ?: c.fc, d(2) ?: 0.0, d(3) ?: 0.0, d(6) ?: c.gst, d(7) ?: c.ed, d(8) ?: 0.0, d(5) ?: 0.0, hist)
+        val raw = BillConfig(prot, d(0) ?: c.kw, d(1)?.toInt() ?: c.day, slabs(ps), slabs(us), d(4) ?: c.fc, d(2) ?: 0.0, d(3) ?: 0.0, d(6) ?: c.gst, d(7) ?: c.ed, d(8) ?: 0.0, d(5) ?: 0.0, hist, d(9)?.toInt() ?: c.hr)
         return BillConfig.parse(raw.toJson())   // clamps ranges and rejects broken slab tables, like the web app
     }
     fun save(cfg: BillConfig) {

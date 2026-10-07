@@ -1,5 +1,11 @@
 package com.solarmonitor.app.ui.screens
 
+import androidx.compose.material3.FilledTonalButton
+import com.solarmonitor.app.ui.hourLabel
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,7 +57,9 @@ import com.solarmonitor.app.data.Repository
 import com.solarmonitor.app.ui.components.DayClock
 import com.solarmonitor.app.ui.components.Grid
 import com.solarmonitor.app.ui.components.GridStrip
+import com.solarmonitor.app.ui.components.ScreenList
 import com.solarmonitor.app.ui.components.SectionCard
+import com.solarmonitor.app.ui.components.full
 import com.solarmonitor.app.ui.components.StatTile
 import com.solarmonitor.app.ui.dateOf
 import com.solarmonitor.app.ui.dayLabel
@@ -80,6 +88,7 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
     val gridOn = live?.gridOn
     var span by rememberSaveable { mutableIntStateOf(7) }
     var clockDay by rememberSaveable { mutableIntStateOf(today) }
+    var showAll by rememberSaveable { mutableStateOf(false) }
     var data by remember { mutableStateOf<Map<Int, List<MinRec>>>(emptyMap()) }
     var loading by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf(false) }
@@ -111,10 +120,7 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
     val current = events.lastOrNull()?.takeIf { it.ongoing }
     val now = live?.t?.takeIf { it > 0 } ?: System.currentTimeMillis()
 
-    LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
+    ScreenList(padding, columns = false) {
         item(key = "span") {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 listOf(1 to "Today", 7 to "7 days", 14 to "14 days", 31 to "All").forEachIndexed { i, (n, l) ->
@@ -132,7 +138,7 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            return@LazyColumn
+            return@ScreenList
         }
 
         item(key = "stats") {
@@ -169,7 +175,7 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
             }
         }
         if (events.isEmpty()) item(key = "none") { SectionCard(null) { Text("No outages in this period.", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-        val byDay = events.reversed().groupBy { ymd(Instant.ofEpochMilli(it.start).atZone(zone).toLocalDate()) }
+        val byDay = events.reversed().let { if (showAll) it else it.take(5) }.groupBy { ymd(Instant.ofEpochMilli(it.start).atZone(zone).toLocalDate()) }
         byDay.forEach { (k, list) ->
             item(key = "d$k") {
                 Text(
@@ -180,6 +186,37 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
             list.forEach { o -> item(key = "o${o.start}") { EventCard(o, all) { if (k in days) clockDay = k } } }
         }
 
+        if (events.size > 5) item(key = "more") {
+            FilledTonalButton(onClick = { showAll = !showAll }, modifier = Modifier.fillMaxWidth()) {
+                Text(if (showAll) "Show fewer" else "Show all ${events.size} outages")
+            }
+        }
+        if (span > 1) item(key = "hours") {
+            val off = remember(all) { Outages.hourly(all).map { it.offMin } }
+            val most = maxOf(1, off.maxOrNull() ?: 0)
+            val crit = LocalEnergy.current.crit
+            val base = MaterialTheme.colorScheme.surfaceContainerHigh
+            SectionCard("Usual outage hours") {
+                Text("Minutes without grid by hour, last ${days.size} days", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                for (row in 0 until 2) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    for (h in row * 12 until row * 12 + 12) Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        val m = off[h]
+                        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(7.dp))
+                            .background(if (m > 0) androidx.compose.ui.graphics.lerp(base, crit, 0.18f + 0.72f * m / most) else base)
+                            .semantics { contentDescription = "${hourLabel(h)}: $m minutes without grid" })
+                        Text(if (h % 3 == 0) hourLabel(h).replace(" ", "") else "", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, fontSize = 9.sp)
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("none", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Box(Modifier.weight(1f).padding(horizontal = 8.dp).height(8.dp).clip(RoundedCornerShape(4.dp))
+                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(base, crit))))
+                    Text("most", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         if (span > 1) item(key = "strips") {
             SectionCard("Day by day") {
                 Text("Tap a day to show it on the clock", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

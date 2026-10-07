@@ -50,18 +50,21 @@ export default function App() {
 
   return (
     <div className="mx-auto min-h-dvh max-w-[1400px] px-4 pb-[calc(88px+env(safe-area-inset-bottom))] sm:px-6 md:pb-10">
-      <header className="sticky top-0 z-30 -mx-4 mb-4 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-xl sm:-mx-6 sm:px-6" style={{ background: 'color-mix(in srgb, var(--bg) 78%, transparent)' }}>
-        <div className="flex min-h-16 items-center gap-3">
+      <header className="sticky top-0 z-30 mb-4 pt-[env(safe-area-inset-top)]">
+        {/* edge-to-edge frosted backdrop that fades out at the bottom: no box, no border */}
+        <div aria-hidden className="pointer-events-none absolute -bottom-7 left-1/2 top-0 -z-10 w-screen -translate-x-1/2 backdrop-blur-xl"
+          style={{ background: 'linear-gradient(to bottom, color-mix(in srgb, var(--bg) 92%, transparent) calc(100% - 28px), transparent)', maskImage: 'linear-gradient(to bottom, #000 calc(100% - 28px), transparent)', WebkitMaskImage: 'linear-gradient(to bottom, #000 calc(100% - 28px), transparent)' }} />
+        <div className="flex min-h-[72px] items-center gap-3">
           <Logo />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
             <Clock />
           </div>
-          <nav className="hidden items-center gap-1 rounded-2xl bg-surface-2 p-1 md:flex" aria-label="Sections">
+          <nav className="hidden items-center gap-0.5 md:flex" aria-label="Sections">
             {TABS.map((t) => (
               <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined}
                 className={cn('focus-ring relative flex min-h-9 items-center gap-2 rounded-xl px-3 text-sm font-medium transition-colors', tab === t.id ? 'text-text' : 'text-text-2 hover:text-text')}>
-                {tab === t.id && <motion.span layoutId="tab" className="absolute inset-0 rounded-xl bg-surface-solid shadow-sm ring-1 ring-border" transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }} />}
+                {tab === t.id && <motion.span layoutId="tab" className="absolute inset-0 rounded-xl bg-surface-3" transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }} />}
                 <t.icon size={16} className="relative" />
                 <span className="relative">{t.label}</span>
               </button>
@@ -93,7 +96,7 @@ export default function App() {
 
 function Logo() {
   return (
-    <div className="relative grid size-10 shrink-0 place-items-center rounded-2xl bg-surface-2 ring-1 ring-border">
+    <div className="relative grid size-10 shrink-0 place-items-center rounded-2xl bg-surface-2">
       <span className="absolute inset-1 rounded-xl bg-solar/20 blur-md" />
       <svg viewBox="0 0 32 32" className="relative size-6" aria-hidden>
         <circle cx="16" cy="16" r="6.5" fill="var(--solar)" />
@@ -137,10 +140,10 @@ function StatusPill() {
   else if (ok === false) { text = 'Inverter silent'; tone = 'var(--crit)' }
   else if (conn === 'reconnecting') { text = 'Reconnecting'; tone = 'var(--warn)' }
   else if (conn === 'live' && ago != null) {
-    if (ago > 10) { text = `${ago}s ago`; tone = 'var(--warn)' } else { text = 'Live'; tone = 'var(--good)'; pulse = true }
+    if (ago > 10) { text = `${ago}s ago`; tone = 'var(--warn)' } else { text = 'Online'; tone = 'var(--good)'; pulse = true }
   }
   return (
-    <div className="flex min-h-10 items-center gap-2 rounded-2xl border border-border bg-surface-2 px-3 text-sm font-medium" role="status" aria-live="polite">
+    <div className="flex min-h-10 items-center gap-2 rounded-full bg-surface-2 px-3.5 text-sm font-medium" role="status" aria-live="polite">
       <span className="relative flex size-2.5">
         {pulse && <span className="absolute inline-flex size-full animate-ping rounded-full opacity-60" style={{ background: tone }} />}
         <span className="relative inline-flex size-2.5 rounded-full" style={{ background: tone }} />

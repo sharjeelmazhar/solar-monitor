@@ -1,5 +1,7 @@
 package com.solarmonitor.app.ui.screens
 
+import com.solarmonitor.app.ui.components.ScreenList
+import com.solarmonitor.app.ui.components.full
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryAlert
@@ -51,10 +53,7 @@ fun NoticesScreen(repo: Repository, padding: PaddingValues) {
     val today = todayYmd()
     val groups = list.groupBy { ymd(Instant.ofEpochMilli(it.t).atZone(zone).toLocalDate()) }
 
-    LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
+    ScreenList(padding, columns = false, spacing = 10.dp) {
         if (list.isEmpty()) {
             item(key = "empty") {
                 Column(Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -65,7 +64,7 @@ fun NoticesScreen(repo: Repository, padding: PaddingValues) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, start = 24.dp, end = 24.dp))
                 }
             }
-            return@LazyColumn
+            return@ScreenList
         }
         item(key = "clear") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

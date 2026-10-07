@@ -14,7 +14,21 @@ export interface Today {
   loadPeak: number
 }
 
+/** Billing month counter kept by the monitor (energy in Wh since the last meter reading). */
+export interface Cyc {
+  s: number // epoch s of the reading the month started at
+  f: number // epoch s when counting began (later than s if the monitor was off or set up mid-month)
+  g: number // grid Wh
+  l: number // home Wh
+  p: number // solar Wh
+  m: number // minutes the monitor was reading the inverter
+  ps: number // previous month: start
+  pg: number // previous month: grid Wh
+  pm: number // previous month: minutes monitored
+}
+
 export interface Live {
+  cyc?: Cyc
   seq: number
   t: number // epoch ms, 0 when the device clock is not set
   ok: boolean
@@ -70,6 +84,8 @@ export interface Info {
   clients: number
   histFrom: number
   battAh: number
+  cycDay?: number
+  cycHour?: number
   tariff: number
   inv: { qpiri: string; qid: string; qvfw: string; qflag: string }
   ui?: string

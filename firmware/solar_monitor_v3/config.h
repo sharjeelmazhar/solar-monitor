@@ -3,7 +3,7 @@
 //  Solar Monitor v3 - settings you may want to change
 // ============================================================================
 
-#define FW_VERSION "3.2.1"
+#define FW_VERSION "3.3.0"
 
 // Network name: the dashboard is also reachable at http://solar.local/
 #define HOSTNAME "solar"
@@ -24,9 +24,12 @@
 #ifndef WIFI_PASS
 #define WIFI_PASS ""
 #endif
-#define SETUP_AP_SSID "SolarMonitor-Setup"
+// The hotspot is called SolarMonitor-XXXX (last 4 characters of the board's address). Phones that join it open the
+// setup page by themselves; it can also be reached at http://192.168.4.1/. No password = an open hotspot that only
+// runs while the monitor has no working Wi-Fi.
+#define SETUP_AP_SSID "SolarMonitor"
 #ifndef SETUP_AP_PASS
-#define SETUP_AP_PASS "change-me-now"
+#define SETUP_AP_PASS "solarsetup"
 #endif
 
 // Password for firmware updates over Wi-Fi and for changing Wi-Fi from the
@@ -43,6 +46,7 @@
 #define INV_RX_PIN 10   // MAX3232 TXD
 #define INV_TX_PIN 20   // MAX3232 RXD
 #define LED_PIN    8    // onboard LED, ON when LOW
+#define BOOT_BTN_PIN 9  // BOOT button: hold 5 s to forget Wi-Fi and open the setup hotspot
 
 // Inverter polling. At 2400 baud a full QPIGS answer takes ~0.5 s on the wire,
 // so the real update rate is ~1-1.4 per second; MIN_CYCLE_MS only stops the loop

@@ -168,11 +168,21 @@ class Repository(private val context: Context, val prefs: Prefs) {
 
     suspend fun loadBill() {
         _bill.value = try { BillConfig.parse(String(api.get("/api/bill"))) } catch (_: Exception) { _bill.value ?: return }
+        syncCycle()
+    }
+
+    /** The monitor counts grid units from the meter reading (day + hour from the bill settings): keep it told. */
+    private suspend fun syncCycle() {
+        val b = _bill.value ?: return
+        val i = _info.value ?: return
+        if (i.cycDay < 0 || (i.cycDay == b.day && i.cycHour == b.hr)) return
+        runCatching { _info.value = Info.parse(String(api.post("/api/settings", mapOf("cycDay" to b.day.toString(), "cycHour" to b.hr.toString())))) }
     }
 
     /** Bill settings live on the monitor so the web dashboard and every phone share them. */
     suspend fun saveBill(c: BillConfig): Boolean = try {
         _bill.value = BillConfig.parse(String(api.post("/api/bill", mapOf("v" to c.toJson()))))
+        syncCycle()
         true
     } catch (_: Exception) { false }
 

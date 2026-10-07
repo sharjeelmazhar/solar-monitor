@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { hhmm, hourLabel } from '../../lib/format'
-import { cn } from '../ui/ui'
+import { cn, useClickOutside } from '../ui/ui'
 
 export interface Series {
   key: string
@@ -119,6 +119,7 @@ export function TimeChart({
 }) {
   const [ref, W] = useWidth<HTMLDivElement>()
   const [hover, setHover] = useState<number | null>(null)
+  useClickOutside(ref, () => setHover(null))
   const all = useMemo(() => series.flatMap((s) => s.values.filter((v): v is number => v != null)), [series])
   const ax = yAxis(all, height - TOP - BOTTOM, { min: yMin, max: yMax }, minRange)
   const left = Math.max(...ax.ticks.map((t) => yFmt(t).length)) * 7 + L + 6
@@ -188,7 +189,7 @@ export function TimeChart({
   }
 
   return (
-    <div ref={ref} className="relative w-full select-none" style={{ height, touchAction: 'pan-y' }} onPointerMove={move} onPointerDown={move} onPointerLeave={() => setHover(null)}>
+    <div ref={ref} className="relative w-full select-none" style={{ height, touchAction: 'pan-y' }} onPointerMove={move} onPointerDown={move} onPointerLeave={(e) => e.pointerType === 'mouse' && setHover(null)}>
       {W > 0 && (
         <svg width={W} height={height} className="block overflow-visible" role="img" aria-label={series.map((s) => s.name).join(', ') + ' chart'}>
           {ax.ticks.map((t) => (
@@ -228,6 +229,7 @@ export function BarChart({
 }: { labels: string[]; titles: string[]; series: Series[]; stacks: string[][]; height?: number; yFmt: (v: number) => string; valueFmt: (v: number) => string }) {
   const [ref, W] = useWidth<HTMLDivElement>()
   const [hover, setHover] = useState<number | null>(null)
+  useClickOutside(ref, () => setHover(null))
   const byKey = Object.fromEntries(series.map((s) => [s.key, s]))
   const visibleStacks = stacks.map((st) => st.filter((k) => byKey[k])).filter((st) => st.length)
   const n = labels.length
@@ -259,7 +261,7 @@ export function BarChart({
   }
 
   return (
-    <div ref={ref} className="relative w-full select-none" style={{ height, touchAction: 'pan-y' }} onPointerMove={move} onPointerDown={move} onPointerLeave={() => setHover(null)}>
+    <div ref={ref} className="relative w-full select-none" style={{ height, touchAction: 'pan-y' }} onPointerMove={move} onPointerDown={move} onPointerLeave={(e) => e.pointerType === 'mouse' && setHover(null)}>
       {W > 0 && (
         <svg width={W} height={height} className="block" role="img" aria-label="Bar chart">
           {ax.ticks.map((t) => (

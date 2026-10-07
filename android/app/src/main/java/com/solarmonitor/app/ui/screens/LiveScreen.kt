@@ -58,7 +58,9 @@ import com.solarmonitor.app.ui.components.Grid
 import com.solarmonitor.app.ui.components.KpiTile
 import com.solarmonitor.app.ui.components.LineChart
 import com.solarmonitor.app.ui.components.PowerFlow
+import com.solarmonitor.app.ui.components.ScreenList
 import com.solarmonitor.app.ui.components.SectionCard
+import com.solarmonitor.app.ui.components.full
 import com.solarmonitor.app.ui.components.StatTile
 import com.solarmonitor.app.ui.fmt1
 import com.solarmonitor.app.ui.fmt2
@@ -84,11 +86,8 @@ fun LiveScreen(repo: Repository, padding: PaddingValues, wide: Boolean) {
     val s by repo.prefs.state.collectAsStateWithLifecycle()
     val idleW = s.idleW
 
-    LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        item(key = "flow") {
+    ScreenList(padding) {
+        full("flow") {
             SectionCard("Power flow", info = FLOW_INFO, action = { d?.takeIf { it.ever }?.let { AssistChip(onClick = {}, label = { Text(Power.label(it, idleW)) }) } }) {
                 Box(contentAlignment = Alignment.Center) {
                     // offline: last values stay visible but faded and still, with a note on top
@@ -102,12 +101,12 @@ fun LiveScreen(repo: Repository, padding: PaddingValues, wide: Boolean) {
         }
         val x = d
         if (x == null || !x.ever) {
-            item(key = "wait") { SectionCard(null) { Text(if (x == null) "Connecting to the solar monitor…" else "Waiting for the inverter…", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-            return@LazyColumn
+            full("wait") { SectionCard(null) { Text(if (x == null) "Connecting to the solar monitor…" else "Waiting for the inverter…", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+            return@ScreenList
         }
         val alerts = if (offline) emptyList() else alertItems(x, idleW)
-        if (alerts.any { it.first > 0 }) item(key = "alerts") { AlertsCard(alerts.filter { it.first > 0 }) }
-        item(key = "now") { Box(if (offline) Modifier.alpha(0.45f) else Modifier) { NowCard(x, info, e, if (wide) 3 else 2, idleW) } }
+        if (alerts.any { it.first > 0 }) full("alerts") { AlertsCard(alerts.filter { it.first > 0 }) }
+        full("now") { Box(if (offline) Modifier.alpha(0.45f) else Modifier) { NowCard(x, info, e, if (wide) 3 else 2, idleW) } }
         item(key = "today") { TodayCard(x, info) }
         item(key = "chart") { LiveChartCard(repo, e) }
     }

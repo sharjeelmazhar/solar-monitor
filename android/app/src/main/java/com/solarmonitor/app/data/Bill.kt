@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.time.LocalDate
 import kotlin.math.floor
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -38,11 +39,12 @@ data class BillConfig(
     val ptv: Double = 0.0,            // Rs/month (not on IESCO bills in 2026)
     val extra: Double = 0.0,          // grid units/month the monitor can't see
     val hist: List<PastBill> = emptyList(),   // oldest first
+    val hr: Int = 20,                 // hour of the meter reading: the new month starts then on the reading day
 ) {
     val limit get() = ps.last().upTo
 
     fun toJson(): String = JSONObject().apply {
-        put("st", if (protected) "p" else "u"); put("kw", kw); put("day", day)
+        put("st", if (protected) "p" else "u"); put("kw", kw); put("day", day); put("hr", hr)
         put("ps", slabsJson(ps)); put("us", slabsJson(us))
         put("fc", fc); put("fpa", fpa); put("qta", qta); put("gst", gst); put("ed", ed); put("ptv", ptv); put("extra", extra)
         put("hist", JSONArray().apply { hist.forEach { put(JSONArray().put(it.month).put(it.units).put(it.amount)) } })
@@ -94,6 +96,7 @@ data class BillConfig(
                 fc = num("fc", d.fc, 0.0, 100.0), fpa = num("fpa", d.fpa, -100.0, 100.0), qta = num("qta", d.qta, -100.0, 100.0),
                 gst = num("gst", d.gst, 0.0, 100.0), ed = num("ed", d.ed, 0.0, 100.0),
                 ptv = num("ptv", d.ptv, 0.0, 10000.0), extra = num("extra", d.extra, 0.0, 100000.0), hist = hist,
+                hr = num("hr", d.hr.toDouble(), 0.0, 23.0).roundToInt(),
             )
         }
     }
@@ -170,6 +173,12 @@ object BillCalc {
         return num(if (d.dayOfMonth < day) s.minusMonths(1) else s)
     }
     fun nextCycle(start: Int) = num(date(start).plusMonths(1))
+    /** The date whose billing month time t (epoch ms) falls in: on the reading day, only from the reading hour on. */
+    fun billDate(t: Long, hr: Int, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()) =
+        num(java.time.Instant.ofEpochMilli(t - hr * 3_600_000L).atZone(zone).toLocalDate())
+    /** Epoch ms of the meter reading that starts the month beginning on date [start]. */
+    fun readingMs(start: Int, hr: Int, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()) =
+        date(start).atTime(hr, 0).atZone(zone).toInstant().toEpochMilli()
     fun prevCycle(start: Int) = num(date(start).minusMonths(1))
     fun addDays(n: Int, k: Long) = num(date(n).plusDays(k))
     fun daysBetween(a: Int, b: Int) = (date(b).toEpochDay() - date(a).toEpochDay()).toInt()
@@ -180,6 +189,7 @@ object BillCalc {
     data class MonthUse(
         val start: Int, val end: Int, val totalDays: Int, val elapsed: Int, val covered: Int,
         val gridUnits: Double, val selfUnits: Double, val soFar: Double, val projected: Double, val perDay: Double,
+        val dayFrac: Double = 1.0,
     )
 
     /** This billing month's grid units so far and projected to the end, from daily totals. [dayFrac] = share of today gone. */
@@ -199,7 +209,7 @@ object BillCalc {
         val perDay = if (covered > 0) grid / coveredDays else 0.0
         val extraPerDay = c.extra / total
         return MonthUse(start, end, total, elapsed, covered, grid, self,
-            soFar = grid + extraPerDay * (elapsed - 1 + frac), projected = perDay * total + c.extra, perDay = perDay + extraPerDay)
+            soFar = grid + extraPerDay * (elapsed - 1 + frac), projected = perDay * total + c.extra, perDay = perDay + extraPerDay, dayFrac = frac)
     }
 
     /** Units of a past bill month: the bill the user entered, else the monitor's data if it covered the whole month. */
@@ -222,25 +232,71 @@ object BillCalc {
         return out to verdict
     }
 
-    /** basis: "monitor" when the monitor has a week of this month, else "bills" (average of the last 3 bills). */
-    data class Now(val m: MonthUse, val ym: Int, val bill: Bill, val saved: Double, val alert: UnitAlert?, val basis: String, val recentAvg: Int)
+    /** basis: "measured" = the monitor has every day since the meter reading, so "so far" is the real count;
+     *  "monitor" = a week or more of data with gaps; "bills" = too little data, the last 3 bills fill in. */
+    data class Now(val m: MonthUse, val ym: Int, val bill: Bill, val saved: Double, val alert: UnitAlert?, val basis: String, val recentAvg: Int,
+                   val counter: Boolean = false, val missingDays: Double = 0.0, val countFrom: Long = 0)
 
-    fun now(byDate: Map<Int, DayRec>, today: Int, c: BillConfig, dayFrac: Double): Now {
+    /** This month from the monitor's own counter (same as monthFromCounter in the web app). Null if it belongs to another month. */
+    fun fromCounter(cyc: Cyc, nowMs: Long, c: BillConfig, avg: Double?, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): Pair<MonthUse, Double>? {
+        val start = cycleStart(billDate(nowMs, c.hr, zone), c.day)
+        val t0 = readingMs(start, c.hr, zone)
+        if (kotlin.math.abs(cyc.s * 1000 - t0) > 3_600_000L) return null
+        val t1 = readingMs(nextCycle(start), c.hr, zone)
+        val total = ((t1 - t0) / 86_400_000.0).roundToInt()
+        val gone = ((nowMs - t0) / 86_400_000.0).coerceIn(0.0, total.toDouble())
+        val grid = cyc.gridWh / 1000
+        val seen = min(gone, cyc.minutes / 1440.0)
+        val missing = max(0.0, gone - seen)
+        val extraPerDay = c.extra / total
+        val measured = if (seen >= 0.25) grid / seen else null
+        val fromBills = avg?.let { max(0.0, it - c.extra) / total }
+        val w = min(1.0, seen / 7)
+        val rate = when { measured == null -> fromBills ?: 0.0; fromBills == null -> measured; else -> w * measured + (1 - w) * fromBills }
+        val soFar = grid + missing * rate + extraPerDay * gone
+        return MonthUse(start, addDays(nextCycle(start), -1), total, max(1, kotlin.math.ceil(gone).toInt()), seen.roundToInt(),
+            grid, max(0.0, cyc.loadWh - cyc.gridWh) / 1000, soFar, soFar + (rate + extraPerDay) * (total - gone), rate + extraPerDay, gone % 1) to missing
+    }
+
+    fun now(byDate: Map<Int, DayRec>, today: Int, c: BillConfig, dayFrac: Double, nowMs: Long = 0, cyc: Cyc? = null): Now {
+        // the monitor's own counter from the meter reading (day + hour) is the most exact source
+        if (cyc != null && nowMs > 0) {
+            val ym0 = billMonth(cycleStart(billDate(nowMs, c.hr), c.day))
+            val r0 = (1..3).mapNotNull { k -> c.hist.firstOrNull { it.month == addMonths(ym0, -k) }?.units }
+            val a0 = if (r0.isEmpty()) null else r0.average()
+            fromCounter(cyc, nowMs, c, a0)?.let { (cm, missing) ->
+                val fpa = unitsOf(addMonths(ym0, -2), byDate, c)?.first
+                val bill = compute(cm.projected, c, fpa)
+                val without = compute(cm.projected + (if (cm.covered > 0) cm.selfUnits / cm.covered else 0.0) * cm.totalDays, c, fpa)
+                return Now(cm, ym0, bill, if (cm.covered >= 7) without.total - bill.total else 0.0, unitAlert(cm.soFar, cm.projected, c),
+                    if (missing <= 0.25) "measured" else "monitor", (a0 ?: 0.0).roundToInt(), true, missing,
+                    if (cyc.f > cyc.s + 1800) cyc.f * 1000 else 0)
+            }
+        }
         var m = monthUse(byDate, today, c, dayFrac)
         val ym = billMonth(m.start)
         // with under a week of monitor data a projection is guesswork: use the last 3 bills instead
         val recent = (1..3).mapNotNull { k -> c.hist.firstOrNull { it.month == addMonths(ym, -k) }?.units }
-        val basis = if (m.covered < 7 && recent.isNotEmpty()) "bills" else "monitor"
+        val avg = if (recent.isEmpty()) 0.0 else recent.average()
+        val measured = m.covered > 0 && m.covered == m.elapsed
+        val basis = when { measured -> "measured"; m.covered < 7 && recent.isNotEmpty() -> "bills"; else -> "monitor" }
         if (basis == "bills") {
-            val avg = recent.average()
             m = m.copy(projected = max(m.soFar, avg), soFar = max(m.soFar, avg * m.elapsed / m.totalDays), perDay = avg / m.totalDays)
+        } else if (measured && recent.isNotEmpty() && m.covered < 7) {
+            // first days of the month: the real count so far, plus the rest of the month at a rate that moves
+            // from the past bills towards what the monitor measures as the week goes on
+            val w = min(1.0, m.covered / 7.0)
+            val extraPerDay = c.extra / m.totalDays
+            val rate = max(0.0, w * (m.perDay - extraPerDay) + (1 - w) * ((avg - c.extra) / m.totalDays))
+            val left = m.totalDays - m.elapsed + 1 - m.dayFrac
+            m = m.copy(projected = max(m.soFar, m.gridUnits + rate * left + c.extra), perDay = rate + extraPerDay)
         }
         val fpaUnits = unitsOf(addMonths(ym, -2), byDate, c)?.first
         val bill = compute(m.projected, c, fpaUnits)
         val without = compute(m.projected + m.selfUnits / max(1, m.covered) * m.totalDays, c, fpaUnits)
         // both need real measurements: a week of monitor data, not an estimate from past bills
         return Now(m, ym, bill, if (m.covered >= 7) without.total - bill.total else 0.0,
-            if (basis == "monitor" && m.covered >= 3) unitAlert(m.soFar, m.projected, c) else null, basis, if (recent.isEmpty()) 0 else recent.average().roundToInt())
+            if (basis != "bills" && (measured || m.covered >= 3)) unitAlert(m.soFar, m.projected, c) else null, basis, avg.roundToInt())
     }
 
     // ---- insights from the bills the user entered (same wording as web/src/lib/bill.ts) ----

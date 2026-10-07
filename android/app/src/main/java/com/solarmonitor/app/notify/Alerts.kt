@@ -190,7 +190,7 @@ class Alerts(private val context: Context, private val prefs: Prefs) {
         days.forEach { map[it.date] = it }
         map[t.date] = DayRec(t.date, t.pvWh.toFloat(), t.loadWh.toFloat(), t.gridWh.toFloat(), t.chgWh.toFloat(), t.disWh.toFloat(), t.pvPeak, t.loadPeak, t.gridOnMin, t.onlineMin, 0, 0, 0, t.outages)
         val now = LocalTime.now()
-        val n = BillCalc.now(map, t.date, cfg, (now.hour * 60 + now.minute) / 1440.0)
+        val n = BillCalc.now(map, t.date, cfg, (now.hour * 60 + now.minute) / 1440.0, live.t.takeIf { it > 0 } ?: System.currentTimeMillis(), live.cyc)
         val a = n.alert ?: return
         if (n.m.covered < 3 && a.key == -1) return   // too little data for a projection
         val markKey = "units_${n.ym}"

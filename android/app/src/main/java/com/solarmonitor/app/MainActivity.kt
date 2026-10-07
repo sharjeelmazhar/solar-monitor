@@ -1,6 +1,10 @@
 package com.solarmonitor.app
 
+import com.solarmonitor.app.ui.components.reportTaps
+import com.solarmonitor.app.ui.components.LocalTapBus
+import com.solarmonitor.app.ui.components.TapBus
 import android.Manifest
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -121,6 +125,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        // Phones stay upright even when auto-rotate is on; tablets and unfolded foldables (smallest side 600 dp+) turn freely.
+        requestedOrientation = if (resources.configuration.smallestScreenWidthDp < 600) ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         val repo = repo
         setContent {
             val s by repo.prefs.state.collectAsStateWithLifecycle()
@@ -181,7 +188,9 @@ private fun AppRoot(repo: Repository) {
     BackHandler(overlay != Overlay.None) { overlay = Overlay.None }
     BackHandler(overlay == Overlay.None && tab != Tab.Live) { tab = Tab.Live }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+    val taps = remember { TapBus() }
+    androidx.compose.runtime.CompositionLocalProvider(LocalTapBus provides taps) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).reportTaps(taps)) {
         val wide = maxWidth >= 600.dp
         val showBar = !wide && overlay == Overlay.None
         Row(Modifier.fillMaxSize()) {
@@ -238,6 +247,7 @@ private fun AppRoot(repo: Repository) {
             }
         }
         if (showBar) FloatingBar(tab, { tab = it }, haze, Modifier.align(Alignment.BottomCenter))
+    }
     }
 }
 

@@ -1,5 +1,10 @@
 package com.solarmonitor.app.ui.components
 
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -168,4 +173,50 @@ fun InfoRows(rows: List<Pair<String, String>>) {
             }
         }
     }
+}
+
+/** Screen body: one column on phones, two on tablets (each card goes to the shorter column).
+ *  [columns] = false keeps one centred column on tablets too (lists that read top to bottom). Use [full] for items that span the width. */
+@Composable
+fun ScreenList(padding: androidx.compose.foundation.layout.PaddingValues, columns: Boolean = true, spacing: androidx.compose.ui.unit.Dp = 14.dp,
+               content: androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope.() -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(androidx.compose.ui.Modifier.fillMaxWidth()) {
+        val side = if (!columns && maxWidth > 792.dp) (maxWidth - 760.dp) / 2 else 16.dp
+        androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid(
+            columns = if (columns) androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells.Adaptive(400.dp)
+                      else androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells.Fixed(1),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = side, end = side,
+                top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
+            verticalItemSpacing = spacing,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            content = content,
+        )
+    }
+}
+
+/** An item that spans every column of a [ScreenList]. */
+fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope.full(key: Any, content: @Composable () -> Unit) =
+    item(key = key, span = androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan.FullLine) { content() }
+
+/** Every tap on the screen (position in the window, and a counter so repeated taps on one spot still count).
+ *  MainActivity feeds it; [clearOnOutsideTap] uses it to drop a selection when the user taps somewhere else. */
+class TapBus { val taps = kotlinx.coroutines.flow.MutableSharedFlow<androidx.compose.ui.geometry.Offset>(extraBufferCapacity = 4) }
+val LocalTapBus = androidx.compose.runtime.staticCompositionLocalOf { TapBus() }
+
+/** Watches every tap in the window without consuming it (put on the root). */
+fun Modifier.reportTaps(bus: TapBus) = this.pointerInput(bus) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+        bus.taps.tryEmit(down.position)
+    }
+}
+
+/** Calls [onOutside] when the user taps anywhere outside this element. */
+@Composable
+fun Modifier.clearOnOutsideTap(onOutside: () -> Unit): Modifier {
+    val bus = LocalTapBus.current
+    val bounds = androidx.compose.runtime.remember { arrayOfNulls<androidx.compose.ui.geometry.Rect>(1) }
+    val cb = androidx.compose.runtime.rememberUpdatedState(onOutside)
+    androidx.compose.runtime.LaunchedEffect(bus) { bus.taps.collect { p -> val b = bounds[0]; if (b != null && !b.contains(p)) cb.value() } }
+    return this.onGloballyPositioned { bounds[0] = it.boundsInWindow() }
 }

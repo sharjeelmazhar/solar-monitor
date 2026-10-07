@@ -31,6 +31,7 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       {d?.ever && <Alerts items={alertsOf(d)} />}
       <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
+        <div className="flex flex-col gap-4 [&>*]:min-w-0 [&>*:last-child]:flex-1">
         <Card>
           <CardHeader
             title="Inverter settings"
@@ -58,8 +59,9 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
             </div>
           )}
         </Card>
+        </div>
 
-        <div className="grid content-start gap-4 [&>*]:min-w-0">
+        <div className="flex flex-col gap-4 [&>*]:min-w-0 [&>*:last-child]:flex-1">
           <SettingsCard />
           <Card>
             <CardHeader title="Appearance" />
@@ -73,10 +75,8 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
               <ThreeD />
             </div>
           </Card>
-          <BillSettings />
         </div>
       </div>
-
       <Card>
         <CardHeader title="Monitor device" sub={`${info ? `firmware v${info.fw}` : 'not connected'} · web app v${__APP_VERSION__}`} />
         {info && (
@@ -100,8 +100,11 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
         <div className="mt-4 flex flex-wrap gap-2">
           <a className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-2xl border border-border bg-surface-2 px-4 text-sm font-medium hover:bg-surface-3" href={API_BASE + '/classic'}>Classic dashboard <ExternalLink size={14} /></a>
           <a className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-2xl border border-border bg-surface-2 px-4 text-sm font-medium hover:bg-surface-3" href={API_BASE + '/update'} target="_blank" rel="noopener">Firmware update <ExternalLink size={14} /></a>
+          <a className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-2xl border border-border bg-surface-2 px-4 text-sm font-medium hover:bg-surface-3" href={API_BASE + '/setup'} target="_blank" rel="noopener">Change Wi-Fi <ExternalLink size={14} /></a>
         </div>
       </Card>
+      <BillSettings />
+
     </div>
   )
 }

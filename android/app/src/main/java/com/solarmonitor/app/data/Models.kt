@@ -19,6 +19,7 @@ data class Live(
     val st: String, val warn: String,
     val today: Today,
     val pollMs: Int, val okCount: Long, val failCount: Long, val crcErrors: Long, val err: String,
+    val cyc: Cyc? = null,
 ) {
     val solarCharging get() = st.length == 8 && st[6] == '1'
     val gridCharging get() = st.length == 8 && st[7] == '1'
@@ -47,10 +48,21 @@ data class Live(
                 ),
                 pollMs = p.optInt("ms"), okCount = p.optLong("ok"), failCount = p.optLong("fail"),
                 crcErrors = p.optLong("crc"), err = p.optString("err"),
+                cyc = j.optJSONObject("cyc")?.let { c ->
+                    Cyc(c.optLong("s"), c.optLong("f"), c.optDouble("g", 0.0), c.optDouble("l", 0.0), c.optDouble("p", 0.0), c.optLong("m"))
+                }?.takeIf { it.s > 0 },
             )
         }
     }
 }
+
+/** Billing month counter kept by the monitor: energy (Wh) since the last meter reading (day + hour from the bill settings). */
+data class Cyc(
+    val s: Long,          // epoch s of the reading the month started at
+    val f: Long,          // epoch s when counting began (later than s if the monitor was off or set up mid-month)
+    val gridWh: Double, val loadWh: Double, val pvWh: Double,
+    val minutes: Long,    // minutes the monitor was reading the inverter
+)
 
 data class Today(
     val date: Int, val pvWh: Double, val loadWh: Double, val gridWh: Double, val chgWh: Double, val disWh: Double,
@@ -62,6 +74,7 @@ data class Info(
     val fw: String, val name: String, val host: String, val ip: String, val mac: String, val ssid: String, val rssi: Int,
     val uptime: Long, val heap: Long, val fsUsed: Long, val fsTotal: Long, val timeOk: Boolean, val tz: String,
     val clients: Int, val histFrom: Int, val battAh: Double, val tariff: Double,
+    val cycDay: Int, val cycHour: Int,   // -1 on firmware without the billing counter
     val qpiri: String, val qid: String, val qvfw: String, val qflag: String,
 ) {
     val rated: Rated? get() = Rated.parse(qpiri)
@@ -76,6 +89,7 @@ data class Info(
                 heap = j.optLong("heap"), fsUsed = j.optLong("fsUsed"), fsTotal = j.optLong("fsTotal"), timeOk = j.optBoolean("timeOk"),
                 tz = j.optString("tz"), clients = j.optInt("clients"), histFrom = j.optInt("histFrom"),
                 battAh = j.optDouble("battAh", 0.0), tariff = j.optDouble("tariff", 0.0),
+                cycDay = j.optInt("cycDay", -1), cycHour = j.optInt("cycHour", -1),
                 qpiri = inv.optString("qpiri"), qid = inv.optString("qid"), qvfw = inv.optString("qvfw"), qflag = inv.optString("qflag"),
             )
         }

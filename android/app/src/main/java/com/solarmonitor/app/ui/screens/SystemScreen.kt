@@ -24,7 +24,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.solarmonitor.app.data.Decode
 import com.solarmonitor.app.data.Repository
 import com.solarmonitor.app.ui.components.InfoRows
+import com.solarmonitor.app.ui.components.ScreenList
 import com.solarmonitor.app.ui.components.SectionCard
+import com.solarmonitor.app.ui.components.full
 import com.solarmonitor.app.ui.dayLabel
 import com.solarmonitor.app.ui.fmtDuration
 import kotlinx.coroutines.delay
@@ -38,11 +40,8 @@ fun SystemScreen(repo: Repository, padding: PaddingValues) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
 
-    LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        d?.takeIf { it.ever }?.let { item(key = "alerts") { AlertsCard(alertItems(it)) } }
+    ScreenList(padding) {
+        d?.takeIf { it.ever }?.let { full("alerts") { AlertsCard(alertItems(it)) } }
         item(key = "inv") {
             val i = info
             val r = i?.rated

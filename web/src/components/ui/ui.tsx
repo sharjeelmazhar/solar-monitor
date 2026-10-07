@@ -3,11 +3,25 @@ import { Switch as BaseSwitch } from '@base-ui/react/switch'
 import { clsx, type ClassValue } from 'clsx'
 import { Info, Maximize2, X } from 'lucide-react'
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { twMerge } from 'tailwind-merge'
 import { splitUnit } from '../../lib/format'
 
 export const cn = (...c: ClassValue[]) => twMerge(clsx(c))
+
+/** Calls onOutside when the user taps or clicks anywhere outside ref (clears a pinned tooltip or selection). */
+export function useClickOutside(ref: RefObject<HTMLElement | null>, onOutside: () => void) {
+  const cb = useRef(onOutside)
+  cb.current = onOutside
+  useEffect(() => {
+    const h = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) cb.current() }
+    document.addEventListener('pointerdown', h, true)
+    return () => document.removeEventListener('pointerdown', h, true)
+  }, [ref])
+}
+
+/** True on devices with a mouse or trackpad: tooltips follow hover there, and need a tap on touch screens. */
+export const canHover = () => typeof matchMedia !== 'undefined' && matchMedia('(hover: hover) and (pointer: fine)').matches
 
 export function Card({ className, children, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return (

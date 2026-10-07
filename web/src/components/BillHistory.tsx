@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useStore } from '../lib/store'
 import { billInsights, DEFAULT_BILL } from '../lib/bill'
 import { fmtPkr } from '../lib/format'
 import { monthName } from './BillCard'
-import { Card, CardHeader, cn } from './ui/ui'
+import { canHover, Card, CardHeader, cn, useClickOutside } from './ui/ui'
 
 const TONE = { good: 'var(--good)', warn: 'var(--warn)', crit: 'var(--crit)', info: 'var(--text-3)' }
 
@@ -11,7 +11,11 @@ const TONE = { good: 'var(--good)', warn: 'var(--warn)', crit: 'var(--crit)', in
 export function BillHistory() {
   const cfg = useStore((s) => s.bill) ?? DEFAULT_BILL
   const hist = cfg.hist
-  const [sel, setSel] = useState<number | null>(null)
+  const [pinned, setPinned] = useState<number | null>(null)
+  const [hover, setHover] = useState<number | null>(null)
+  const box = useRef<HTMLDivElement>(null)
+  useClickOutside(box, () => { setPinned(null); setHover(null) })
+  const sel = hover ?? pinned
   if (hist.length < 2) return null
   const limit = cfg.ps[cfg.ps.length - 1][0]
   const max = Math.max(limit * 1.15, ...hist.map((b) => b[1]))
@@ -21,12 +25,14 @@ export function BillHistory() {
     <Card>
       <CardHeader title="Your bills" sub={`${hist.length} months from ${monthName(hist[0][0])} to ${monthName(hist[hist.length - 1][0])} · units per bill`}
         info={<p>From the bills entered in System → Bill settings. Bars turn amber at {limit - 25}+ units and red above {limit}. The dashed line is the protected limit.</p>} />
+      <div ref={box}>
       <div className="relative h-44">
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img" aria-label="Units per bill">
           {hist.map((b, i) => (
             <rect key={b[0]} x={i * W + W * 0.15} width={W * 0.7} y={y(b[1])} height={100 - y(b[1])} rx={0.8}
               fill={b[1] > limit ? 'var(--crit)' : b[1] >= limit - 25 ? 'var(--warn)' : 'var(--grid)'}
-              opacity={sel == null ? (i === hist.length - 1 ? 1 : 0.8) : sel === i ? 1 : 0.35} className="cursor-pointer" onClick={() => setSel(sel === i ? null : i)}>
+              opacity={sel == null ? (i === hist.length - 1 ? 1 : 0.8) : sel === i ? 1 : 0.35} className="cursor-pointer" onClick={() => setPinned(pinned === i ? null : i)}
+              onPointerEnter={(e) => e.pointerType === 'mouse' && setHover(i)} onPointerLeave={(e) => e.pointerType === 'mouse' && setHover(null)}>
               <title>{`${monthName(b[0], { month: 'long', year: 'numeric' })}: ${b[1]} units${b[2] ? ', ' + fmtPkr(b[2]) : ''}`}</title>
             </rect>
           ))}
@@ -51,7 +57,8 @@ export function BillHistory() {
           </div>
         )
       })()}
-      <p className="mt-2 text-xs text-text-3">Tap a bar to see that bill.</p>
+      </div>
+      <p className="mt-2 text-xs text-text-3">{canHover() ? 'Point at a bar to see that bill; click to keep it open.' : 'Tap a bar to see that bill.'}</p>
       <ul className="mt-3 grid gap-1.5 text-sm">
         {billInsights(hist, limit).map((x, i) => (
           <li key={i} className="flex items-start gap-2.5 leading-relaxed">

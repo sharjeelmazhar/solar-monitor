@@ -1,8 +1,8 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo, useRef, useState } from 'react'
 import { fmtDuration, fmtWh, hhmm, hourLabel } from '../../lib/format'
 import { duringOutage, hourlyMix, type HourMix, type Outage } from '../../lib/outages'
 import type { MinRec } from '../../lib/types'
-import { cn } from '../ui/ui'
+import { cn, useClickOutside } from '../ui/ui'
 
 // A 24-hour dial: midnight at the top, noon at the bottom, clockwise.
 //  - 24 hour wedges: what powered the home (solar inside, battery, grid outside); longer wedge = more use.
@@ -47,6 +47,8 @@ export function DayClock({ recs, dayStart, outages, now }: { recs: MinRec[]; day
   const outs = useMemo(() => outages.filter((o) => o.end > dayStart && o.start < dayStart + DAY), [outages, dayStart])
   const [hover, setHover] = useState<Sel>(null)
   const [pinned, setPinned] = useState<Sel>(null)
+  const root = useRef<HTMLDivElement>(null)
+  useClickOutside(root, () => { setPinned(null); setHover(null) })
   const sel = hover ?? pinned
   const maxWh = Math.max(1, ...mix.map((h) => h.solar + h.batt + h.grid))
   const frac = (t: number) => Math.min(1, Math.max(0, (t - dayStart) / DAY))
@@ -88,7 +90,7 @@ export function DayClock({ recs, dayStart, outages, now }: { recs: MinRec[]; day
   const nowA = now != null && now >= dayStart && now < dayStart + DAY ? ang(frac(now)) : null
 
   return (
-    <div className="grid gap-3">
+    <div ref={root} className="grid gap-3">
       <svg viewBox="0 0 320 320" className="mx-auto block w-full max-w-[380px] select-none overflow-visible" role="group" aria-label="24-hour clock of the day: what powered the home each hour and when the grid was off">
         <defs>
           <pattern id={`${uid}-hatch`} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">

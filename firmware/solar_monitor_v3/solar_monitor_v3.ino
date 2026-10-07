@@ -41,6 +41,8 @@
 #include <Preferences.h>
 #include <Update.h>
 #include <esp_wifi.h>
+#include <esp_task_wdt.h>
+#include <DNSServer.h>
 #include <sys/time.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -48,8 +50,10 @@
 #include "inverter.h"
 #include "history.h"
 #include "web_index.h"
+#include "setup_page.h"
 
 AsyncWebServer server(80);
+DNSServer dns;   // setup hotspot: answers every name with our address so phones open the setup page
 AsyncEventSource events("/events");
 AsyncEventSource statusEvents("/events/status");   // quiet stream for phone background alerts
 Preferences prefs;
@@ -59,7 +63,7 @@ SemaphoreHandle_t dataMux;
 Live live;
 bool everOk = false;
 uint32_t lastOkMs = 0, seq = 0, cycleMs = 0, okCount = 0, failCount = 0;
-char liveJson[1400] = "{\"ok\":false,\"ever\":false}";
+char liveJson[1600] = "{\"ok\":false,\"ever\":false}";
 
 Sample ring[RECENT_SAMPLES];
 int ringHead = 0, ringCount = 0;   // head = next write position
@@ -79,10 +83,26 @@ float setBattAh = 0, setTariff = 0;
 String setName = "Solar", setTz = TZ_DEFAULT;
 String setBill;   // bill estimator settings: JSON written by the apps, stored as-is
 
+// Billing month counter: energy since the last meter reading (reading day + hour, sent by the apps from the bill
+// settings). Kept in NVS so a restart doesn't lose it; at most 15 minutes of counting are lost on a power cut.
+int setCycDay = 0, setCycHour = 20;   // day 0 = not set yet
+struct Cycle {
+  uint32_t start = 0;      // epoch of the meter reading this month started at
+  uint32_t from = 0;       // when counting began (later than start if the monitor was off or set up mid-month)
+  float gridWh = 0, loadWh = 0, pvWh = 0;
+  uint32_t onMin = 0;      // minutes the monitor was reading the inverter this month
+  uint32_t prevStart = 0;  // the month before (so the apps can show the last bill's measured units)
+  float prevGridWh = 0;
+  uint32_t prevOnMin = 0;
+} cyc;
+uint32_t cycSavedMs = 0;
+volatile bool cycMoved = false;   // reading day/hour changed in the settings
+
 // misc
 bool fsOk = false, mdnsOk = false, apOn = false, rebootPending = false, refreshRated = true;
 bool timeSetByClient = false;
-uint32_t wifiLostAt = 0, rebootAt = 0;
+uint32_t wifiLostAt = 0, rebootAt = 0, staUpAt = 0, joinAt = 0;
+char apName[24] = SETUP_AP_SSID;
 
 // ---------- minute accumulator (loop task only) ----------
 struct {
@@ -138,7 +158,8 @@ static void buildLiveJsonLocked() {
     "\"tempC\":%d,\"busV\":%d,\"st\":\"%s\",\"st2\":\"%s\",\"warn\":\"%s\","
     "\"today\":{\"date\":%lu,\"pv\":%.1f,\"load\":%.1f,\"grid\":%.1f,\"chg\":%.1f,\"dis\":%.1f,"
     "\"gridOnMin\":%u,\"onlineMin\":%u,\"outages\":%u,\"pvPeak\":%u,\"loadPeak\":%u},"
-    "\"poll\":{\"ms\":%lu,\"ok\":%lu,\"fail\":%lu,\"crc\":%lu,\"err\":\"%s\"},\"timeOk\":%s}",
+    "\"poll\":{\"ms\":%lu,\"ok\":%lu,\"fail\":%lu,\"crc\":%lu,\"err\":\"%s\"},\"timeOk\":%s,"
+    "\"cyc\":{\"s\":%lu,\"f\":%lu,\"g\":%.1f,\"l\":%.1f,\"p\":%.1f,\"m\":%lu,\"ps\":%lu,\"pg\":%.1f,\"pm\":%lu}}",
     (unsigned long)seq, tms, fresh ? "true" : "false", everOk ? "true" : "false",
     everOk ? (unsigned long)(millis() - lastOkMs) : 0UL, mode,
     L.pvW, L.pvV, L.pvA, L.pvChgW,
@@ -149,7 +170,9 @@ static void buildLiveJsonLocked() {
     (unsigned long)today.date, today.pvWh, today.loadWh, today.gridWh, today.chgWh, today.disWh,
     today.gridOnMin, today.onlineMin, today.outages, today.pvPeakW, today.loadPeakW,
     (unsigned long)cycleMs, (unsigned long)okCount, (unsigned long)failCount, (unsigned long)invCrcErrors, err,
-    timeValid() ? "true" : "false");
+    timeValid() ? "true" : "false",
+    (unsigned long)cyc.start, (unsigned long)cyc.from, cyc.gridWh, cyc.loadWh, cyc.pvWh, (unsigned long)cyc.onMin,
+    (unsigned long)cyc.prevStart, cyc.prevGridWh, (unsigned long)cyc.prevOnMin);
 }
 
 static String buildInfoJson() {
@@ -166,14 +189,14 @@ static String buildInfoJson() {
     "{\"fw\":\"%s\",\"histVer\":%d,\"name\":\"%s\",\"host\":\"%s\",\"ip\":\"%s\",\"mac\":\"%s\",\"ssid\":\"%s\",\"rssi\":%d,"
     "\"ap\":%s,\"uptime\":%lu,\"heap\":%lu,\"minHeap\":%lu,\"fsUsed\":%lu,\"fsTotal\":%lu,\"fsOk\":%s,"
     "\"timeOk\":%s,\"time\":%lu,\"tz\":\"%s\",\"clients\":%u,\"histFrom\":%lu,"
-    "\"battAh\":%.1f,\"tariff\":%.2f,"
+    "\"battAh\":%.1f,\"tariff\":%.2f,\"cycDay\":%d,\"cycHour\":%d,\"reset\":%d,"
     "\"inv\":{\"qpiri\":\"%s\",\"qid\":\"%s\",\"qvfw\":\"%s\",\"qflag\":\"%s\"}}",
     FW_VERSION, HIST_VERSION, name, HOSTNAME, WiFi.localIP().toString().c_str(), WiFi.macAddress().c_str(), ssid,
     WiFi.RSSI(), apOn ? "true" : "false", (unsigned long)(millis() / 1000), (unsigned long)ESP.getFreeHeap(),
     (unsigned long)ESP.getMinFreeHeap(), fsOk ? (unsigned long)LittleFS.usedBytes() : 0UL,
     fsOk ? (unsigned long)LittleFS.totalBytes() : 0UL, fsOk ? "true" : "false",
     timeValid() ? "true" : "false", (unsigned long)time(nullptr), tz, (unsigned)events.count(), (unsigned long)from,
-    setBattAh, setTariff, a, b, c, d);
+    setBattAh, setTariff, setCycDay, setCycHour, (int)esp_reset_reason(), a, b, c, d);
   return String(buf);
 }
 
@@ -202,6 +225,7 @@ static void finalizeMinute() {
   if (date != today.date) return;   // belongs to a day we already closed
   lock();
   bool dup = todayCount > 0 && todayRecs[todayCount - 1].t >= m.t;
+  if (!dup && cyc.start && m.t >= cyc.start) cyc.onMin++;
   if (!dup && todayCount < 1440) {
     todayRecs[todayCount++] = m;
     today.onlineMin++;
@@ -265,6 +289,53 @@ static void rollDay(uint32_t newDate) {
   Serial.printf("New day %lu\n", (unsigned long)newDate);
 }
 
+// ---------- billing month ----------
+// The last meter reading at or before `now`: day setCycDay of this month (or the month before) at setCycHour, local time.
+static time_t cycleStartFor(time_t now) {
+  struct tm t;
+  localtime_r(&now, &t);
+  for (int back = 0; back < 2; back++) {
+    struct tm c = t;
+    c.tm_mon -= back;
+    c.tm_mday = setCycDay; c.tm_hour = setCycHour; c.tm_min = 0; c.tm_sec = 0; c.tm_isdst = -1;
+    time_t s = mktime(&c);
+    if (s <= now) return s;
+  }
+  return 0;
+}
+
+static void saveCycle() {
+  Cycle c;
+  lock(); c = cyc; unlock();
+  prefs.putBytes("cyc", &c, sizeof(c));
+  cycSavedMs = millis();
+}
+
+static void serviceCycle(time_t now) {
+  time_t s = cycleStartFor(now);
+  if (cycMoved) {
+    cycMoved = false;
+    // the energy counted so far still fits the new month if counting began after its start
+    lock();
+    if (cyc.start && cyc.from >= (uint32_t)s) cyc.start = s; else cyc.start = 0;
+    unlock();
+    if (cyc.start) { saveCycle(); return; }
+  }
+  if (!s || cyc.start == (uint32_t)s) return;
+  lock();
+  bool rolled = cyc.start && (uint32_t)s > cyc.start;
+  if (rolled) { cyc.prevStart = cyc.start; cyc.prevGridWh = cyc.gridWh; cyc.prevOnMin = cyc.onMin; }
+  // counting from the reading itself if the monitor was running then, else from now
+  bool continuous = rolled && now - s < 120;
+  cyc.start = s;
+  cyc.from = continuous ? s : now;
+  cyc.gridWh = cyc.loadWh = cyc.pvWh = 0;
+  cyc.onMin = 0;
+  unlock();
+  saveCycle();
+  Serial.printf("Billing month from %lu (counting from %lu)\n", (unsigned long)cyc.start, (unsigned long)cyc.from);
+}
+
 // ---------- one good reading ----------
 static uint32_t lastSampleMs = 0;
 static bool prevGridKnown = false, prevGrid = false;
@@ -282,6 +353,8 @@ static void commitSample(const Live& L) {
     uint32_t date = localDate(now);
     if (date != today.date && todayLoaded) rollDay(date);
   }
+
+  if (tOk && setCycDay) serviceCycle(now);
 
   struct timeval tv;
   gettimeofday(&tv, nullptr);
@@ -307,6 +380,11 @@ static void commitSample(const Live& L) {
   if (L.battW > 0) today.chgWh += L.battW * dtH; else today.disWh += -L.battW * dtH;
   if (L.pvW > today.pvPeakW) today.pvPeakW = L.pvW;
   if (L.outW > today.loadPeakW) today.loadPeakW = L.outW;
+  if (cyc.start) {
+    cyc.gridWh += L.gridW * dtH;
+    cyc.loadWh += L.outW * dtH;
+    cyc.pvWh += L.pvW * dtH;
+  }
   if (L.battPct < today.battMin) today.battMin = L.battPct;
   if (L.battPct > today.battMax) today.battMax = L.battPct;
   if (L.tempC > today.tempMax) today.tempMax = L.tempC;
@@ -420,14 +498,20 @@ static void pollInverter() {
 // ---------- Wi-Fi ----------
 static void startAP() {
   if (apOn) return;
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  snprintf(apName, sizeof(apName), "%s-%02X%02X", SETUP_AP_SSID, mac[4], mac[5]);   // e.g. SolarMonitor-7E90
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(SETUP_AP_SSID, SETUP_AP_PASS);
+  WiFi.softAP(apName, strlen(SETUP_AP_PASS) >= 8 ? SETUP_AP_PASS : nullptr);
+  dns.setErrorReplyCode(DNSReplyCode::NoError);
+  dns.start(53, "*", WiFi.softAPIP());
   apOn = true;
-  Serial.printf("Setup hotspot '%s' on: http://%s/\n", SETUP_AP_SSID, WiFi.softAPIP().toString().c_str());
+  Serial.printf("Setup hotspot '%s' on: http://%s/\n", apName, WiFi.softAPIP().toString().c_str());
 }
 
 static void stopAP() {
   if (!apOn) return;
+  dns.stop();
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
   apOn = false;
@@ -437,6 +521,8 @@ static void onWiFiEvent(WiFiEvent_t e, WiFiEventInfo_t info) {
   if (e == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
     Serial.printf("Wi-Fi connected: http://%s/  (RSSI %d)\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
     wifiLostAt = 0;
+    staUpAt = millis() | 1;
+    joinAt = 0;
   } else if (e == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
     if (!wifiLostAt) wifiLostAt = millis() | 1;
   }
@@ -475,7 +561,9 @@ static void serviceWiFi() {
       Serial.println("Also at: http://" HOSTNAME ".local/");
     }
   }
-  if (up && apOn && millis() > 60000) stopAP();
+  // keep the hotspot 2 minutes after joining so the setup page can show the new address
+  if (up && apOn && staUpAt && millis() - staUpAt > 120000 && WiFi.softAPgetStationNum() == 0) stopAP();
+  if (up && apOn && staUpAt && millis() - staUpAt > 600000) stopAP();
   if (!up && wifiLostAt && millis() - wifiLostAt > 90000 && !apOn) startAP();   // let the user fix Wi-Fi
 }
 
@@ -484,6 +572,11 @@ static void sendJson(AsyncWebServerRequest* r, const String& s) {
   AsyncWebServerResponse* res = r->beginResponse(200, "application/json", s);
   res->addHeader("Cache-Control", "no-store");
   r->send(res);
+}
+
+// Requests that came in over the setup hotspot: only someone standing next to the monitor can send these.
+static bool fromHotspot(AsyncWebServerRequest* r) {
+  return apOn && r->client() && r->client()->localIP() == WiFi.softAPIP();
 }
 
 static bool needAdmin(AsyncWebServerRequest* r) {
@@ -530,7 +623,14 @@ static void setupWeb() {
     r->send(res);
   };
   server.on("/classic", HTTP_GET, classic);
-  server.on("/", HTTP_GET, [classic](AsyncWebServerRequest* r) {
+  auto setupPage = [](AsyncWebServerRequest* r) {
+    AsyncWebServerResponse* res = r->beginResponse(200, "text/html", (const uint8_t*)SETUP_HTML, strlen_P(SETUP_HTML));
+    res->addHeader("Cache-Control", "no-store");
+    r->send(res);
+  };
+  server.on("/setup", HTTP_GET, setupPage);
+  server.on("/", HTTP_GET, [classic, setupPage](AsyncWebServerRequest* r) {
+    if (fromHotspot(r) && WiFi.status() != WL_CONNECTED) { setupPage(r); return; }
     if (fsOk && LittleFS.exists("/www/index.html.gz")) {
       AsyncWebServerResponse* res = r->beginResponse(LittleFS, "/www/index.html.gz", "text/html");
       res->addHeader("Content-Encoding", "gzip");
@@ -701,6 +801,11 @@ static void setupWeb() {
     if ((v = param(r, "battAh")).length()) { setBattAh = constrain(v.toFloat(), 0, 10000); prefs.putFloat("battAh", setBattAh); }
     if ((v = param(r, "tariff")).length()) { setTariff = constrain(v.toFloat(), 0, 10000); prefs.putFloat("tariff", setTariff); }
     if ((v = param(r, "name")).length())   { setName = v.substring(0, 30); prefs.putString("name", setName); }
+    int cd = param(r, "cycDay").toInt(), ch = param(r, "cycHour").length() ? param(r, "cycHour").toInt() : setCycHour;
+    if (cd >= 1 && cd <= 28 && ch >= 0 && ch <= 23 && (cd != setCycDay || ch != setCycHour)) {
+      setCycDay = cd; setCycHour = ch; cycMoved = true;
+      prefs.putInt("cycDay", cd); prefs.putInt("cycHour", ch);
+    }
     if ((v = param(r, "tz")).length() && v.length() < 40) {
       setTz = v; prefs.putString("tz", setTz);
       setenv("TZ", setTz.c_str(), 1); tzset();
@@ -746,13 +851,25 @@ static void setupWeb() {
     sendJson(r, s);
   });
 
+  server.on("/api/wifistatus", HTTP_GET, [](AsyncWebServerRequest* r) {
+    char ssid[40];
+    jsonSafe(ssid, WiFi.SSID().c_str(), sizeof(ssid));
+    bool up = WiFi.status() == WL_CONNECTED;
+    bool failed = !up && joinAt && millis() - joinAt > 30000;
+    sendJson(r, String("{\"connected\":") + (up ? "true" : "false") + ",\"failed\":" + (failed ? "true" : "false") +
+      ",\"ip\":\"" + WiFi.localIP().toString() + "\",\"host\":\"" HOSTNAME "\",\"ssid\":\"" + ssid + "\",\"ap\":\"" + apName + "\"}");
+  });
+
+  // From the setup hotspot no password is needed (first-time setup); from the home network it needs the admin password.
   server.on("/api/wifi", HTTP_POST, [](AsyncWebServerRequest* r) {
-    if (needAdmin(r)) return;
+    if (!fromHotspot(r) && needAdmin(r)) return;
     String ssid = param(r, "ssid"), pass = param(r, "pass");
     if (!ssid.length()) { r->send(400, "text/plain", "ssid missing"); return; }
     sendJson(r, "{\"ok\":true,\"msg\":\"Joining network. Reconnect to the dashboard on the new network.\"}");
     WiFi.begin(ssid.c_str(), pass.c_str());
     wifiLostAt = millis() | 1;
+    joinAt = millis() | 1;
+    staUpAt = 0;
   });
 
   server.on("/raw", HTTP_GET, [](AsyncWebServerRequest* r) {
@@ -790,7 +907,7 @@ static void setupWeb() {
 
   server.onNotFound([](AsyncWebServerRequest* r) {
     if (r->method() == HTTP_OPTIONS) { r->send(204); return; }
-    if (apOn) { r->redirect("/"); return; }   // captive-portal style while in setup hotspot
+    if (fromHotspot(r)) { r->redirect("http://" + WiFi.softAPIP().toString() + "/setup"); return; }   // phones' "sign in to network" check
     r->send(404, "text/plain", "Not found");
   });
   server.begin();
@@ -813,6 +930,9 @@ void setup() {
   setName = prefs.getString("name", "Solar");
   setTz = prefs.getString("tz", TZ_DEFAULT);
   setBill = prefs.getString("bill", "");
+  setCycDay = prefs.getInt("cycDay", 0);
+  setCycHour = prefs.getInt("cycHour", 20);
+  if (prefs.getBytesLength("cyc") == sizeof(Cycle)) prefs.getBytes("cyc", &cyc, sizeof(cyc));
 
   fsOk = LittleFS.begin(true);   // formats the data partition on first run
   Serial.printf("Storage: %s, %u / %u bytes used\n", fsOk ? "ok" : "FAILED",
@@ -823,6 +943,42 @@ void setup() {
   startWiFi();
   configTzTime(setTz.c_str(), "pool.ntp.org", "time.google.com", "time.cloudflare.com");
   setupWeb();
+
+  // watchdog: restart if the main loop ever hangs for 30 s (a full inverter cycle takes under 8 s)
+  esp_task_wdt_config_t wdt = {.timeout_ms = 30000, .idle_core_mask = 0, .trigger_panic = true};
+  if (esp_task_wdt_reconfigure(&wdt) != ESP_OK) esp_task_wdt_init(&wdt);
+  esp_task_wdt_add(nullptr);
+  pinMode(BOOT_BTN_PIN, INPUT_PULLUP);
+}
+
+// Hold the BOOT button for 5 s: forget the Wi-Fi and open the setup hotspot (moving house, new router).
+static void serviceButton() {
+  static uint32_t downAt = 0;
+  if (digitalRead(BOOT_BTN_PIN) == LOW) {
+    if (!downAt) downAt = millis() | 1;
+    else if (millis() - downAt > 5000) {
+      downAt = 0;
+      Serial.println("Button: forgetting Wi-Fi, opening setup hotspot");
+      WiFi.disconnect(false, true);
+      staUpAt = 0;
+      startAP();
+      for (int i = 0; i < 6; i++) { digitalWrite(LED_PIN, i & 1); delay(120); }
+    }
+  } else downAt = 0;
+}
+
+// Last-resort recovery: a restart fixes a stuck Wi-Fi stack or a memory leak. Readings are saved every minute.
+static void serviceHealth() {
+  bool wifiStuck = wifiLostAt && millis() - wifiLostAt > 20UL * 60000 && (!apOn || WiFi.softAPgetStationNum() == 0) && WiFi.SSID().length();
+  // low memory only counts if it lasts 30 s (uploads dip it for a moment)
+  static uint32_t lowSince = 0;
+  if (ESP.getFreeHeap() < 10000) { if (!lowSince) lowSince = millis() | 1; } else lowSince = 0;
+  bool lowMem = lowSince && millis() - lowSince > 30000;
+  if ((wifiStuck || lowMem) && !rebootPending) {
+    Serial.printf("Health: restarting (%s)\n", lowMem ? "low memory" : "Wi-Fi lost for 20 min");
+    rebootPending = true;
+    rebootAt = millis() + 500;
+  }
 }
 
 void loop() {
@@ -832,8 +988,14 @@ void loop() {
     pollInverter();
   }
   serviceWiFi();
+  serviceButton();
+  serviceHealth();
+  if (apOn) dns.processNextRequest();
+  if (cyc.start && millis() - cycSavedMs > 15UL * 60000) saveCycle();
+  esp_task_wdt_reset();
   if (rebootPending && (int32_t)(millis() - rebootAt) > 0) {
     finalizeMinute();
+    if (cyc.start) saveCycle();
     ESP.restart();
   }
   delay(2);

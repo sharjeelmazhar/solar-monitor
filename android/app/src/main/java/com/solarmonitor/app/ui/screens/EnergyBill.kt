@@ -1,5 +1,6 @@
 package com.solarmonitor.app.ui.screens
 
+import com.solarmonitor.app.ui.components.clearOnOutsideTap
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +48,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import com.solarmonitor.app.data.BillCalc
 import com.solarmonitor.app.data.BillConfig
 import com.solarmonitor.app.data.DayRec
+import com.solarmonitor.app.data.Live
+import com.solarmonitor.app.ui.hhmm
+import com.solarmonitor.app.ui.hourLabel
 import com.solarmonitor.app.ui.components.SectionCard
 import com.solarmonitor.app.ui.dateOf
 import com.solarmonitor.app.ui.dayLabel
@@ -72,11 +76,12 @@ private const val BILL_INFO = "Protected homes used 200 units or less in each of
 
 /** Expected IESCO bill for this billing month, with advice about the protected limit. Same logic as the web card. */
 @Composable
-fun BillCard(byDate: Map<Int, DayRec>, today: Int, cfg: BillConfig) {
+fun BillCard(byDate: Map<Int, DayRec>, today: Int, cfg: BillConfig, live: Live? = null) {
     val e = LocalEnergy.current
     var open by rememberSaveable { mutableStateOf(false) }
     val nowT = LocalTime.now()
-    val now = BillCalc.now(byDate, today, cfg, (nowT.hour * 60 + nowT.minute) / 1440.0)
+    val now = BillCalc.now(byDate, today, cfg, (nowT.hour * 60 + nowT.minute) / 1440.0, live?.t?.takeIf { it > 0 } ?: System.currentTimeMillis(), live?.cyc)
+    val since = "${short(now.m.start)}, ${hourLabel(cfg.hr)}"
     val m = now.m
     val bill = now.bill
     val limit = cfg.limit
@@ -88,15 +93,15 @@ fun BillCard(byDate: Map<Int, DayRec>, today: Int, cfg: BillConfig) {
             color = if (cfg.protected) e.good else e.warn,
             modifier = Modifier.clip(CircleShape).background((if (cfg.protected) e.good else e.warn).copy(alpha = 0.14f)).padding(horizontal = 12.dp, vertical = 5.dp))
     }) {
-        Text("${monthName(now.ym, "MMMM yyyy")} bill · reading ${short(m.start)} – ${short(BillCalc.nextCycle(m.start))} · day ${m.elapsed} of ${m.totalDays}",
+        Text("${monthName(now.ym, "MMMM yyyy")} bill · reading ${short(m.start)} – ${short(BillCalc.nextCycle(m.start))}, ${hourLabel(cfg.hr)} · day ${m.elapsed} of ${m.totalDays}",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(10.dp))
         Text("Expected bill", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(rs(bill.total), style = MaterialTheme.typography.displaySmall.merge(NumberStyle))
         Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(Modifier.weight(1f)) {
-                Text("Grid units", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("${m.soFar.roundToInt()} so far → ≈ ${m.projected.roundToInt()}", style = MaterialTheme.typography.titleMedium.merge(NumberStyle))
+                Text(if (now.basis == "measured") "Grid units used since " + (if (now.counter) since else short(m.start)) else "Grid units so far (estimated)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text((if (now.basis == "measured") (if (m.soFar < 10) String.format(Locale.US, "%.1f", m.soFar) else "${m.soFar.roundToInt()}") else "≈ ${m.soFar.roundToInt()}") + " → ≈ ${m.projected.roundToInt()} by the reading", style = MaterialTheme.typography.titleMedium.merge(NumberStyle))
             }
             if (now.saved > 1) Column(Modifier.weight(1f)) {
                 Text("Solar is saving you", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -121,6 +126,12 @@ fun BillCard(byDate: Map<Int, DayRec>, today: Int, cfg: BillConfig) {
             }
         }
         Text("dark = used so far · light = expected by the meter reading" + when {
+                now.counter && now.countFrom > 0 -> " · the monitor started counting on ${short(BillCalc.billDate(now.countFrom, 0))}, ${hhmm(now.countFrom)}; the days before are estimated from your bills (about ${now.recentAvg} units a month). From the next reading on, every unit is counted."
+                now.counter -> " · counted live by the monitor since the reading ($since)" +
+                    (if (now.missingDays > 0.25) "; it was off for about " + (if (now.missingDays < 1) "${(now.missingDays * 24).roundToInt()} hours" else String.format(Locale.US, "%.1f days", now.missingDays)) + ", filled in at the usual rate" else "") +
+                    (if (m.covered < 7 && now.recentAvg > 0) "; the forecast leans on your last bills (about ${now.recentAvg} units) until a week is measured" else "")
+                now.basis == "measured" -> " · counted by the monitor from the inverter since the reading on ${short(m.start)}" +
+                    (if (m.covered < 7 && now.recentAvg > 0) "; the rest of the month uses your last bills (about ${now.recentAvg} units) until a week is measured" else "")
                 now.basis == "bills" -> " · the monitor has only ${m.covered} day${if (m.covered == 1) "" else "s"} of this month, so this uses your last bills (about ${now.recentAvg} units)"
                 m.covered < m.elapsed -> " · the monitor has ${m.covered} of ${m.elapsed} days, the rest are estimated"
                 else -> ""
@@ -249,7 +260,7 @@ fun BillHistory(cfg: BillConfig) {
         Spacer(Modifier.height(10.dp))
         val max = maxOf(limit * 1.15f, hist.maxOf { it.units }.toFloat())
         var sel by rememberSaveable { mutableStateOf(-1) }
-        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(150.dp).pointerInput(hist.size) {
+        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(150.dp).clearOnOutsideTap { sel = -1 }.pointerInput(hist.size) {
             detectTapGestures { p -> val i = (p.x / (size.width.toFloat() / hist.size)).toInt().coerceIn(0, hist.size - 1); sel = if (sel == i) -1 else i }
         }) {
             val w = size.width / hist.size

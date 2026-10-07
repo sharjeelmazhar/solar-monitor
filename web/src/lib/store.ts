@@ -189,9 +189,18 @@ export async function refreshInverter() {
 async function loadBill() {
   try {
     set({ bill: parseBill(await (await fetch(API_BASE + '/api/bill', { cache: 'no-store' })).json()) })
+    syncCycle()
   } catch {
     if (!state.bill) set({ bill: parseBill(null) })
   }
+}
+
+/** The monitor counts grid units from the meter reading (day + hour from the bill settings): keep it told. */
+function syncCycle() {
+  const b = state.bill
+  const i = state.info
+  if (!b || !i || i.cycDay === undefined) return // older firmware has no counter
+  if (i.cycDay !== b.day || i.cycHour !== b.hr) void saveSettings({ cycDay: String(b.day), cycHour: String(b.hr) })
 }
 
 export async function saveBill(c: BillConfig): Promise<boolean> {
@@ -199,6 +208,7 @@ export async function saveBill(c: BillConfig): Promise<boolean> {
     const r = await fetch(API_BASE + '/api/bill', { method: 'POST', body: new URLSearchParams({ v: JSON.stringify(c) }) })
     if (!r.ok) return false
     set({ bill: parseBill(await r.json()) })
+    syncCycle()
     return true
   } catch {
     return false

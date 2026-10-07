@@ -98,7 +98,7 @@ fun DayClock(recs: List<MinRec>, dayStart: Long, outages: List<Outage>, now: Lon
     fun frac(t: Long) = ((t - dayStart).toFloat() / DAY).coerceIn(0f, 1f)
     val desc = "24-hour clock: ${outs.size} outages, " + mix.filter { it.minutes > 0 }.joinToString { "${hourLabel(it.hour)} ${fmtWh(it.homeWh)}" }
 
-    Column(modifier) {
+    Column(modifier.clearOnOutsideTap { sel = null }) {
         Canvas(
             Modifier.fillMaxWidth().widthIn(max = 420.dp).aspectRatio(1f).align(Alignment.CenterHorizontally)
                 .semantics { contentDescription = desc }

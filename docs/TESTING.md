@@ -31,3 +31,10 @@ a full pass on real devices before calling it production-ready.
 - [ ] Dark mode on all new screens; large font sizes; tablet / landscape layout.
 - [ ] Playwright viewport matrix and Lighthouse (from the original plan).
 - [ ] Firmware: 24 h soak at 3.2.1, heap and LittleFS usage.
+
+## v1.3 / firmware 3.3.0 (pending real-world checks)
+- [ ] Billing counter: on the 8th at 8 PM the bill card switches to "Grid units used since 8 Oct, 8 PM" and counts from 0 (web + phone).
+- [ ] Counter survives a restart (saved every 15 min and before a planned restart).
+- [ ] First-time Wi-Fi: hold BOOT 5 s -> hotspot "SolarMonitor-XXXX" (password solarsetup) -> phone opens the setup page -> pick Wi-Fi -> page shows the new address.
+- [ ] Watchdog: no unexpected restarts over a few days (System -> Monitor device "Up for"; /api/info "reset" 3 = normal software restart).
+- [ ] Phone stays upright with auto-rotate on; a tablet (or the emulator in tablet size) rotates and shows two columns.

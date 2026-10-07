@@ -10,7 +10,7 @@ import { Button, Card, CardHeader, IconButton, InfoButton, Segmented, cn } from 
 const field = 'focus-ring min-h-11 w-full rounded-2xl border border-border bg-surface-2 px-3 text-sm num'
 const cell = 'focus-ring min-h-9 w-full rounded-xl border border-border bg-surface-2 px-2 text-sm num text-right'
 
-type NumKey = 'kw' | 'day' | 'fc' | 'fpa' | 'qta' | 'gst' | 'ed' | 'ptv' | 'extra'
+type NumKey = 'kw' | 'day' | 'hr' | 'fc' | 'fpa' | 'qta' | 'gst' | 'ed' | 'ptv' | 'extra'
 /** Numbers are edited as text so a half-typed "1." or "-" doesn't jump around. */
 type Draft = { st: 'p' | 'u'; ps: string[][]; us: string[][]; hist: PastBill[] } & Record<NumKey, string>
 
@@ -28,6 +28,7 @@ const numIn = (v: string, neg = false) => v.replace(neg ? /[^\d.-]/g : /[^\d.]/g
 const FIELDS: [NumKey, string, string?, boolean?][] = [
   ['kw', 'Sanctioned load (kW)', 'LOAD on your bill; fixed charges are per kW'],
   ['day', 'Meter reading day', 'READING DATE on your bill (day of month)'],
+  ['hr', 'Reading time (hour, 0-23)', 'the new month starts then; 20 = 8 PM, after the meter reader has been'],
   ['fpa', 'Fuel adjustment (Rs/unit)', 'the "@" rate next to FPA on the bill', true],
   ['qta', 'Quarterly adjustment (Rs/unit)', 'QTR. TARIFF ADJ ÷ units; can be negative', true],
   ['fc', 'F.C. surcharge (Rs/unit)', 'F.C SURCHARGE ÷ units (0.43 in 2026)'],
@@ -78,7 +79,8 @@ export function BillSettings() {
     <Card>
       <CardHeader title="Bill settings" sub="IESCO home tariff · saved on the monitor, shared with the phone app"
         info={<><p>Copy these from your latest IESCO bill. The estimate then follows the same steps as the bill itself.</p><BillGuide /></>} />
-      <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); save() }}>
+      <div className="grid gap-x-8 lg:grid-cols-2 [&>*]:min-w-0">
+      <form className="grid content-start gap-4" onSubmit={(e) => { e.preventDefault(); save() }}>
         <div className="grid gap-1.5">
           <span className="text-xs text-text-2">Your status (printed on the bill)</span>
           <Segmented label="Consumer status" value={d.st} onChange={(v) => set('st', v)} options={[{ value: 'p', label: 'Protected' }, { value: 'u', label: 'Unprotected' }]} />
@@ -106,6 +108,7 @@ export function BillSettings() {
       </form>
 
       <PastBills bills={d.hist} onChange={(hist) => { const next = { ...d, hist }; setD(next); save(next) }} />
+      </div>
     </Card>
   )
 }
@@ -124,7 +127,7 @@ function PastBills({ bills, onChange }: { bills: PastBill[]; onChange: (b: PastB
     setAmount('')
   }
   return (
-    <div className="mt-6 border-t border-border pt-4">
+    <div className="mt-6 border-t border-border pt-4 lg:mt-0 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
       <h3 className="flex items-center gap-1 text-sm font-semibold">Your bills <InfoButton title="Where to find it on your bill" small><BillGuide /></InfoButton></h3>
       <p className="mb-3 text-xs text-text-3">Add the units and amount from each bill (the table on the bill lists the last 12 months). Used for protected status and the fuel adjustment.</p>
       <div className="grid grid-cols-[1.3fr_1fr_1fr_auto] items-end gap-2 [&>*]:min-w-0">
@@ -134,8 +137,10 @@ function PastBills({ bills, onChange }: { bills: PastBill[]; onChange: (b: PastB
         <IconButton label="Add bill" onClick={add} disabled={!units}><Plus size={18} /></IconButton>
       </div>
       {bills.length > 0 && (
-        <table className="num mt-3 w-full text-sm">
-          <thead><tr className="text-left text-xs text-text-3 [&_th]:pb-1 [&_th]:font-medium"><th>Month</th><th className="text-right">Units</th><th className="text-right">Amount</th><th className="pr-4 text-right">Rs / unit</th><th /></tr></thead>
+        // long lists scroll inside the card on wide screens, so the form beside it doesn't end in empty space
+        <div className="mt-3 lg:max-h-[620px] lg:overflow-y-auto">
+        <table className="num w-full text-sm">
+          <thead className="sticky top-0 bg-surface-solid"><tr className="text-left text-xs text-text-3 [&_th]:pb-1 [&_th]:font-medium"><th>Month</th><th className="text-right">Units</th><th className="text-right">Amount</th><th className="pr-4 text-right">Rs / unit</th><th /></tr></thead>
           <tbody className="[&_td]:border-t [&_td]:border-border [&_td]:py-1.5">
             {bills.slice().reverse().map((b) => (
               <tr key={b[0]}>
@@ -148,6 +153,7 @@ function PastBills({ bills, onChange }: { bills: PastBill[]; onChange: (b: PastB
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   )

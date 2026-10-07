@@ -1,5 +1,7 @@
 package com.solarmonitor.app.ui.screens
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -49,7 +51,9 @@ import com.solarmonitor.app.ui.components.ChartSeries
 import com.solarmonitor.app.ui.components.Grid
 import com.solarmonitor.app.ui.components.GridStrip
 import com.solarmonitor.app.ui.components.LineChart
+import com.solarmonitor.app.ui.components.ScreenList
 import com.solarmonitor.app.ui.components.SectionCard
+import com.solarmonitor.app.ui.components.full
 import com.solarmonitor.app.ui.components.StatTile
 import com.solarmonitor.app.ui.dateOf
 import com.solarmonitor.app.ui.dayLabel
@@ -84,6 +88,18 @@ fun HistoryScreen(repo: Repository, padding: PaddingValues) {
     var hidden by remember { mutableStateOf(setOf<String>()) }
     var picker by remember { mutableStateOf(false) }
     val histFrom = info?.histFrom?.takeIf { it > 0 } ?: today
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    // same columns as the web dashboard's CSV download
+    val saveCsv = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        val r = recs ?: return@rememberLauncherForActivityResult
+        if (uri == null) return@rememberLauncherForActivityResult
+        val iso = dateOf(date).toString()
+        val text = buildString {
+            append("time,solar_W,home_W,grid_W_est,battery_W,battery_pct,battery_V,pv_V,grid_V,output_V,inverter_C,mode,grid_present\n")
+            for (x in r) append("$iso ${hhmm(x.t)},${x.pvW},${x.loadW},${x.gridW},${x.battW},${x.battPct},${x.battV},${x.pvV},${x.gridV},${x.outV},${x.tempC},${x.mode},${if (x.gridOn) 1 else 0}\n")
+        }
+        runCatching { ctx.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) } }
+    }
 
     LaunchedEffect(date) {
         recs = null; failed = false
@@ -95,11 +111,8 @@ fun HistoryScreen(repo: Repository, padding: PaddingValues) {
         }
     }
 
-    LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        item(key = "nav") {
+    ScreenList(padding) {
+        full("nav") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 FilledTonalIconButton(onClick = { date = ymd(dateOf(date).minusDays(1)) }, enabled = date > histFrom) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous day") }
                 FilledTonalButton(onClick = { picker = true }, modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
@@ -108,16 +121,18 @@ fun HistoryScreen(repo: Repository, padding: PaddingValues) {
                     Text(if (date == today) "Today · ${dayLabel(date)}" else dayLabel(date))
                 }
                 FilledTonalIconButton(onClick = { date = ymd(dateOf(date).plusDays(1)) }, enabled = date < today) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next day") }
+                Spacer(Modifier.width(8.dp))
+                FilledTonalIconButton(onClick = { saveCsv.launch("solar-${dateOf(date)}.csv") }, enabled = !recs.isNullOrEmpty()) { Icon(Icons.Rounded.Download, "Save this day as CSV") }
             }
         }
         val r = recs
         if (r == null) {
-            item(key = "load") { SectionCard(null) { if (failed) Text("Couldn't load this day. Check that you're on the home Wi-Fi.") else LinearProgressIndicator(Modifier.fillMaxWidth()) } }
-            return@LazyColumn
+            full("load") { SectionCard(null) { if (failed) Text("Couldn't load this day. Check that you're on the home Wi-Fi.") else LinearProgressIndicator(Modifier.fillMaxWidth()) } }
+            return@ScreenList
         }
         if (r.isEmpty()) {
-            item(key = "empty") { SectionCard(null) { Text("No history recorded for ${dayLabel(date)}.", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-            return@LazyColumn
+            full("empty") { SectionCard(null) { Text("No history recorded for ${dayLabel(date)}.", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+            return@ScreenList
         }
         val d0 = dayStartMs(date)
         val xs = LongArray(r.size) { r[it].t }
@@ -208,24 +223,21 @@ fun EnergyScreen(repo: Repository, padding: PaddingValues) {
     val rows = keys.map { map[it] }
     val fmtLabel = DateTimeFormatter.ofPattern(if (range > 31) "d MMM" else "EEE d")
 
-    LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
+    ScreenList(padding) {
         // always present, so the list doesn't keep its old scroll position and hide the card above it once data arrives
         item(key = "bill") {
-            if (days != null && t != null && t.date > 0) BillCard(map, t.date, bill ?: BillConfig())
+            if (days != null && t != null && t.date > 0) BillCard(map, t.date, bill ?: BillConfig(), live)
             else SectionCard("Electricity bill estimate") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         }
         item(key = "bills") { BillHistory(bill ?: BillConfig()) }
-        item(key = "range") {
+        full("range") {
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 listOf(0 to "Month", 7 to "7 days", 30 to "30 days", 365 to "Year").forEachIndexed { i, (n, l) ->
                     SegmentedButton(selected = range == n, onClick = { range = n }, shape = SegmentedButtonDefaults.itemShape(i, 4), icon = {}) { Text(l, maxLines = 1) }
                 }
             }
         }
-        item(key = "bars") {
+        full("bars") {
             val all = listOf(
                 ChartSeries("Solar", e.solar, FloatArray(rows.size) { rows[it]?.pvWh ?: Float.NaN }),
                 ChartSeries("Home", e.load, FloatArray(rows.size) { rows[it]?.loadWh ?: Float.NaN }),

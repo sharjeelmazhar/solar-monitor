@@ -22,4 +22,4 @@ id = "hardcoded-password-define"
 description = "Password in a #define (belongs in the git-ignored secrets.h)"
 regex = '''#define\s+\w*PASS\w*\s+"(?:[^"]{4,})"'''
 [[rules.allowlists]]
-regexes = ['''change-me-now''', '''pick-an?-[a-z-]*password''']
+regexes = ['''change-me-now''', '''pick-an?-[a-z-]*password''', '''"solarsetup"''']   # solarsetup: published default of the setup hotspot (only on while there is no Wi-Fi)

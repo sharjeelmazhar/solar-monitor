@@ -20,6 +20,7 @@ export interface BillConfig {
   st: 'p' | 'u' // protected / unprotected
   kw: number // sanctioned load
   day: number // meter reading day of month (1-28); the billing month starts on this day
+  hr: number // hour of the reading (0-23): the new month starts at this time on the reading day
   ps: Slab[]
   us: Slab[]
   fc: number // financing cost surcharge, Rs per unit
@@ -36,6 +37,7 @@ export const DEFAULT_BILL: BillConfig = {
   st: 'p',
   kw: 1,
   day: 1,
+  hr: 20,
   ps: [[100, 10.54, 200], [200, 13.01, 300]],
   us: [[100, 22.44, 275], [200, 28.91, 300], [300, 33.1, 350], [400, 36.46, 400], [500, 38.95, 500], [600, 40.22, 675], [700, 41.85, 675], [0, 47.2, 675]],
   fc: 0.43,
@@ -68,6 +70,7 @@ export function parseBill(o: unknown): BillConfig {
     st: j.st === 'u' ? 'u' : 'p',
     kw: num(j.kw, d.kw, 0, 100),
     day: Math.round(num(j.day, d.day, 1, 28)),
+    hr: Math.round(num(j.hr, d.hr, 0, 23)),
     ps: slabs(j.ps, d.ps),
     us: slabs(j.us, d.us),
     fc: num(j.fc, d.fc, 0, 100),
@@ -156,6 +159,16 @@ export function cycleStart(date: number, day: number): number {
   }
   return y * 10000 + m * 100 + day
 }
+
+/** The date (YYYYMMDD) whose billing month time t falls in: on the reading day, only from the reading hour on. */
+export function billDate(t: number, hr: number): number {
+  const d = new Date(t - hr * 3600e3)
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
+}
+
+/** Epoch ms of the meter reading that starts the month beginning on date `start`. */
+export const readingMs = (start: number, hr: number) =>
+  new Date(Math.floor(start / 10000), (Math.floor(start / 100) % 100) - 1, start % 100, hr).getTime()
 
 /** Start of the billing month after the one starting at `start`. */
 export function nextCycle(start: number): number {

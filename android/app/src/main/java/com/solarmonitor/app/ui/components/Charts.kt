@@ -92,15 +92,17 @@ fun ChartLegend(items: List<Pair<String, Color>>, hidden: Set<String>, onToggle:
     }
 }
 
-/** Shared touch handling: tap or drag to inspect, the tooltip hides itself after a few seconds. */
+/** Shared touch handling: tap or drag to inspect; the tooltip goes when you tap elsewhere, or after a few seconds. */
 @Composable
 private fun rememberHover(): Pair<Float?, (Float?) -> Unit> {
     var hover by remember { mutableStateOf<Float?>(null) }
-    LaunchedEffect(hover) { if (hover != null) { delay(4000); hover = null } }
+    LaunchedEffect(hover) { if (hover != null) { delay(8000); hover = null } }
     return hover to { v: Float? -> hover = v }
 }
 
+@Composable
 private fun Modifier.hoverInput(set: (Float?) -> Unit) = this
+    .clearOnOutsideTap { set(null) }
     .pointerInput(Unit) { detectTapGestures(onPress = { set(it.x) }) }
     .pointerInput(Unit) { detectHorizontalDragGestures(onDragStart = { set(it.x) }) { c, _ -> set(c.position.x) } }
 

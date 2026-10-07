@@ -19,6 +19,7 @@ export default function OutagesPage() {
   const [failed, setFailed] = useState(false)
   const stale = useStale()
   const [clockDay, setClockDay] = useState(today)
+  const [showAll, setShowAll] = useState(false)
 
   const days = useMemo(() => {
     const out: number[] = []
@@ -56,15 +57,17 @@ export default function OutagesPage() {
   const current = events.length && events[events.length - 1].ongoing ? events[events.length - 1] : null
 
   // newest first, grouped by the day the outage started
+  // newest first; only the latest few until "Show all" so the list sits level with the clock
+  const SHORT = 5
   const byDay = useMemo(() => {
     const m = new Map<number, Outage[]>()
-    for (const o of events.slice().reverse()) {
+    for (const o of events.slice().reverse().slice(0, showAll ? undefined : SHORT)) {
       const k = ymd(new Date(o.start))
       if (!m.has(k)) m.set(k, [])
       m.get(k)!.push(o)
     }
     return [...m.entries()]
-  }, [events])
+  }, [events, showAll])
 
   const clockIdx = days.indexOf(clockDay)
   const clockRecs = data.get(clockDay)
@@ -88,11 +91,12 @@ export default function OutagesPage() {
             <Stat label="Time without grid" value={fmtDuration(stats.totalMin)} />
             <Stat label="Longest" value={stats.count ? fmtDuration(stats.longestMin) : '–'} />
             <Stat label="Average outage" value={stats.count ? fmtDuration(stats.averageMin) : '–'} />
-            <Stat label="Grid available" value={stats.monitoredMin ? `${Math.round(100 - (stats.totalMin / stats.monitoredMin) * 100)} %` : '–'} hint={`of ${fmtDuration(stats.monitoredMin)} monitored`} />
+            <Stat className="col-span-2 lg:col-span-1" label="Grid available" value={stats.monitoredMin ? `${Math.round(100 - (stats.totalMin / stats.monitoredMin) * 100)} %` : '–'} hint={`of ${fmtDuration(stats.monitoredMin)} monitored`} />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-            <Card>
+          <div className={cn('grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]', showAll && 'items-start')}>
+            {/* the clock stays in view while the list scrolls next to it */}
+            <Card className={showAll ? 'lg:sticky lg:top-24' : 'flex flex-col'}>
               <CardHeader
                 title="Day clock" info={<><p>Each slice is one hour. Its colours show what powered the home: <b>yellow</b> solar, <b>green</b> battery, <b>pink</b> grid. Longer slices mean more energy used.</p><p>The outer ring shows the grid: pink when available, <b>red stripes</b> when it was off.</p><p>Tap a slice or a red part for details.</p></>}
                 sub={clockDay === today ? 'Today · midnight at the top' : dayLabel(clockDay, { weekday: 'long', day: 'numeric', month: 'short' })}
@@ -103,11 +107,13 @@ export default function OutagesPage() {
                   </div>
                 }
               />
+              <div className="flex flex-1 flex-col justify-center">
               {clockRecs ? (
-                <DayClock key={clockDay} recs={clockRecs} dayStart={fromYmd(clockDay).getTime()} outages={events} now={clockDay === today ? nowT : undefined} />
-              ) : (
-                <Skeleton className="mx-auto aspect-square w-full max-w-[380px] rounded-full" />
-              )}
+                  <DayClock key={clockDay} recs={clockRecs} dayStart={fromYmd(clockDay).getTime()} outages={events} now={clockDay === today ? nowT : undefined} />
+                ) : (
+                  <Skeleton className="mx-auto aspect-square w-full max-w-[380px] rounded-full" />
+                )}
+              </div>
             </Card>
 
             <Card>
@@ -125,41 +131,48 @@ export default function OutagesPage() {
                   </section>
                 ))}
               </div>
+              {events.length > SHORT && (
+                <button onClick={() => setShowAll(!showAll)} className="focus-ring mt-3 flex min-h-11 w-full items-center justify-center gap-1 rounded-2xl bg-surface-2 text-sm font-medium text-text-2 hover:bg-surface-3 hover:text-text">
+                  {showAll ? 'Show fewer' : `Show all ${events.length} outages`}
+                </button>
+              )}
             </Card>
           </div>
 
           {span > 1 && (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-              <Card>
-                <CardHeader title="Usual outage hours" sub={`minutes without grid by hour, last ${days.length} days`} />
-                <div className="grid grid-cols-12 gap-1.5" role="img" aria-label="Heat map of outage minutes by hour of day">
-                  {stats.byHour.map((m, h) => (
-                    <div key={h}>
-                      <div className="aspect-square rounded-lg ring-1 ring-border" title={`${hourLabel(h)}: ${m} min without grid`}
-                        style={{ background: m ? `color-mix(in srgb, var(--crit) ${Math.round(18 + 72 * (m / maxHour))}%, var(--surface-2))` : 'var(--surface-2)' }} />
-                      <div className="num mt-0.5 text-center text-[10px] text-text-3">{h % 3 === 0 ? hourLabel(h).replace(' ', '') : ''}</div>
-                    </div>
-                  ))}
+            // one card, two halves: the hour heat map and a strip per day (days only as many as the monitor has)
+            <Card>
+              <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+                <div>
+                  <CardHeader title="Usual outage hours" sub={`minutes without grid by hour, ${days.length === 1 ? 'today' : `last ${days.length} days`}`} />
+                  <div className="grid grid-cols-12 gap-1.5" role="img" aria-label="Heat map of outage minutes by hour of day">
+                    {stats.byHour.map((m, h) => (
+                      <div key={h}>
+                        <div className="aspect-square rounded-lg" title={`${hourLabel(h)}: ${m} min without grid`}
+                          style={{ background: m ? `color-mix(in srgb, var(--crit) ${Math.round(18 + 72 * (m / maxHour))}%, var(--surface-2))` : 'var(--surface-2)' }} />
+                        <div className="num mt-0.5 text-center text-[10px] text-text-3">{h % 3 === 0 ? hourLabel(h).replace(' ', '') : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-xs text-text-3">
+                    <span>none</span>
+                    <div className="h-2 flex-1 rounded-full" style={{ background: 'linear-gradient(90deg, var(--surface-2), var(--crit))' }} />
+                    <span>most</span>
+                  </div>
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-xs text-text-3">
-                  <span>none</span>
-                  <div className="h-2 flex-1 rounded-full" style={{ background: 'linear-gradient(90deg, var(--surface-2), var(--crit))' }} />
-                  <span>most</span>
+                <div className="lg:border-l lg:border-border lg:pl-10">
+                  <CardHeader title="Day by day" sub={`pink = grid on · red = grid off${days.length < span ? ` · the monitor has ${days.length} day${days.length === 1 ? '' : 's'} so far` : ''}`} />
+                  <div className="grid gap-2.5">
+                    {days.map((k) => (
+                      <button key={k} onClick={() => setClockDay(k)} className={cn('focus-ring grid grid-cols-[72px_minmax(0,1fr)] items-start gap-3 rounded-xl p-1 text-left', k === clockDay && 'bg-surface-2')}>
+                        <span className="pt-0.5 text-xs font-medium text-text-2">{k === today ? 'Today' : dayLabel(k, { weekday: 'short', day: 'numeric' })}</span>
+                        {data.get(k) ? <GridStrip recs={data.get(k)!} dayStart={fromYmd(k).getTime()} /> : <Skeleton className="h-[22px]" />}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </Card>
-
-              <Card>
-                <CardHeader title="Day by day" sub="pink = grid available · red = grid off · empty = no data" />
-                <div className="grid gap-2.5">
-                  {days.map((k) => (
-                    <button key={k} onClick={() => setClockDay(k)} className={cn('focus-ring grid grid-cols-[72px_minmax(0,1fr)] items-start gap-3 rounded-xl p-1 text-left', k === clockDay && 'bg-surface-2')}>
-                      <span className="pt-0.5 text-xs font-medium text-text-2">{k === today ? 'Today' : dayLabel(k, { weekday: 'short', day: 'numeric' })}</span>
-                      {data.get(k) ? <GridStrip recs={data.get(k)!} dayStart={fromYmd(k).getTime()} /> : <Skeleton className="h-[22px]" />}
-                    </button>
-                  ))}
-                </div>
-              </Card>
-            </div>
+              </div>
+            </Card>
           )}
         </>
       )}

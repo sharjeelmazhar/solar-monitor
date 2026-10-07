@@ -1,9 +1,9 @@
 import { AlertTriangle, BellRing, ChevronDown, Info, ShieldCheck, ShieldOff } from 'lucide-react'
 import { useState } from 'react'
-import { addMonths, billMonth, computeBill, cycleStart, DEFAULT_BILL, nextCycle, prevCycle, unitAlert, type BillConfig } from '../lib/bill'
-import { addDays, dayLabel, fmtPkr, fromYmd } from '../lib/format'
+import { addMonths, billDate, billMonth, computeBill, cycleStart, DEFAULT_BILL, nextCycle, prevCycle, readingMs, unitAlert, type BillConfig } from '../lib/bill'
+import { addDays, dayLabel, fmtPkr, fromYmd, hhmm, hourLabel, ymd } from '../lib/format'
 import { useStore } from '../lib/store'
-import type { DayRec } from '../lib/types'
+import type { Cyc, DayRec } from '../lib/types'
 import { Card, CardHeader, Value, cn } from './ui/ui'
 
 const daysBetween = (a: number, b: number) => Math.round((fromYmd(b).getTime() - fromYmd(a).getTime()) / 864e5)
@@ -21,6 +21,7 @@ export interface MonthUse {
   projected: number // grid units by the end of the month incl. extra units
   soFar: number // grid units so far incl. the extra units pro rata
   perDay: number
+  dayFrac: number // share of the last counted day that has gone
 }
 
 export function monthUse(byDate: Map<number, DayRec>, today: number, c: BillConfig, start = cycleStart(today, c.day)): MonthUse {
@@ -49,6 +50,33 @@ export function monthUse(byDate: Map<number, DayRec>, today: number, c: BillConf
     soFar: grid + extraPerDay * (elapsed - 1 + dayFrac),
     projected: perDay * totalDays + c.extra,
     perDay: perDay + extraPerDay,
+    dayFrac,
+  }
+}
+
+/** This month from the monitor's own counter (energy since the meter reading at day + hour).
+ *  Time the monitor was off is filled in at the usual rate, and the rest of the month is projected the same way. */
+function monthFromCounter(cyc: Cyc, now: number, c: BillConfig, avg: number | null): MonthUse & { missing: number } | null {
+  const start = cycleStart(billDate(now, c.hr), c.day)
+  const t0 = readingMs(start, c.hr)
+  if (Math.abs(cyc.s * 1000 - t0) > 3600e3) return null // counter belongs to another month (settings not synced yet)
+  const t1 = readingMs(nextCycle(start), c.hr)
+  const totalDays = Math.round((t1 - t0) / 864e5)
+  const gone = Math.min(totalDays, Math.max(0, (now - t0) / 864e5)) // days of the month gone, with fractions
+  const grid = cyc.g / 1000
+  const seen = Math.min(gone, cyc.m / 1440) // days the monitor was counting
+  const missing = Math.max(0, gone - seen)
+  const extraPerDay = c.extra / totalDays
+  const measuredRate = seen >= 0.25 ? grid / seen : null
+  const billRate = avg != null ? Math.max(0, avg - c.extra) / totalDays : null
+  // the first week leans on past bills, then on what the monitor measures
+  const w = Math.min(1, seen / 7)
+  const rate = measuredRate == null ? billRate ?? 0 : billRate == null ? measuredRate : w * measuredRate + (1 - w) * billRate
+  const soFar = grid + missing * rate + extraPerDay * gone
+  return {
+    start, end: addDays(nextCycle(start), -1), totalDays, elapsed: Math.max(1, Math.ceil(gone)), covered: Math.round(seen),
+    gridUnits: grid, selfUnits: Math.max(0, cyc.l - cyc.g) / 1000,
+    soFar, projected: soFar + (rate + extraPerDay) * (totalDays - gone), perDay: rate + extraPerDay, dayFrac: gone % 1, missing,
   }
 }
 
@@ -78,30 +106,65 @@ export function protectedFromHistory(byDate: Map<number, DayRec>, today: number,
 }
 
 /** Everything the bill card shows, shared with the Live page. */
-export function billNow(byDate: Map<number, DayRec>, today: number, cfg: BillConfig) {
+/** Everything the bill card shows, shared with the Live page.
+ *  basis: 'measured' = the monitor has every day since the meter reading, so "so far" is the real count;
+ *  'monitor' = a week or more of data with gaps; 'bills' = too little data, the last 3 bills fill in. */
+export function billNow(byDate: Map<number, DayRec>, today: number, cfg: BillConfig, live?: { now: number; cyc?: Cyc }) {
+  const pastAvg = (ym: number) => {
+    const r = [1, 2, 3].map((k) => cfg.hist.find((h) => h[0] === addMonths(ym, -k))?.[1]).filter((u): u is number => u != null)
+    return r.length ? r.reduce((a, b) => a + b, 0) / r.length : null
+  }
+  // the monitor's own counter from the meter reading (day + hour) is the most exact source
+  if (live?.cyc && live.cyc.s > 0) {
+    const ym0 = billMonth(cycleStart(billDate(live.now, cfg.hr), cfg.day))
+    const a = pastAvg(ym0)
+    const cm = monthFromCounter(live.cyc, live.now, cfg, a)
+    if (cm) {
+      const fpaUnits = unitsOf(addMonths(ym0, -2), byDate, cfg)?.units
+      const bill = computeBill(cm.projected, cfg, fpaUnits)
+      const withoutSolar = computeBill(cm.projected + (cm.covered ? cm.selfUnits / cm.covered : 0) * cm.totalDays, cfg, fpaUnits)
+      const basis: 'measured' | 'monitor' | 'bills' = cm.missing <= 0.25 ? 'measured' : 'monitor'
+      return { m: cm as MonthUse, ym: ym0, bill, fpaUnits, basis, recentAvg: Math.round(a ?? 0), counter: true, missingDays: cm.missing, countFrom: live.cyc.f > live.cyc.s + 1800 ? live.cyc.f * 1000 : 0,
+        saved: cm.covered >= 7 ? withoutSolar.total - bill.total : 0,
+        alert: unitAlert(cm.soFar, cm.projected, cfg) }
+    }
+  }
   const m = monthUse(byDate, today, cfg)
   const ym = billMonth(m.start)
-  // With under a week of monitor data a projection is guesswork: use the average of the last 3 bills instead.
-  const recent = [1, 2, 3].map((k) => cfg.hist.find((h) => h[0] === addMonths(ym, -k))?.[1]).filter((u): u is number => u != null)
-  const basis: 'monitor' | 'bills' = m.covered < 7 && recent.length ? 'bills' : 'monitor'
+  const recentAvg = pastAvg(ym)
+  const recent = recentAvg == null ? [] : [recentAvg]
+  const avg = recentAvg ?? 0
+  const measured = m.covered > 0 && m.covered === m.elapsed
+  const basis: 'measured' | 'monitor' | 'bills' = measured ? 'measured' : m.covered < 7 && recent.length ? 'bills' : 'monitor'
   if (basis === 'bills') {
-    const avg = recent.reduce((a, b) => a + b, 0) / recent.length
     m.projected = Math.max(m.soFar, avg)
     m.soFar = Math.max(m.soFar, (avg * m.elapsed) / m.totalDays)
     m.perDay = avg / m.totalDays
+  } else if (measured && recent.length && m.covered < 7) {
+    // first days of the month: the real count so far, plus the rest of the month at a rate that moves
+    // from your past bills towards what the monitor measures as the week goes on
+    const w = Math.min(1, m.covered / 7)
+    const extraPerDay = cfg.extra / m.totalDays
+    const rate = w * (m.perDay - extraPerDay) + (1 - w) * ((avg - cfg.extra) / m.totalDays)
+    const left = m.totalDays - m.elapsed + 1 - m.dayFrac
+    m.projected = Math.max(m.soFar, m.gridUnits + Math.max(0, rate) * left + cfg.extra)
+    m.perDay = Math.max(0, rate) + extraPerDay
   }
   const fpaUnits = unitsOf(addMonths(ym, -2), byDate, cfg)?.units
   const bill = computeBill(m.projected, cfg, fpaUnits)
   const withoutSolar = computeBill(m.projected + (m.selfUnits / Math.max(1, m.covered)) * m.totalDays, cfg, fpaUnits)
-  return { m, ym, bill, fpaUnits, basis, recentAvg: recent.length ? Math.round(recent.reduce((a, b) => a + b, 0) / recent.length) : 0, // both need real measurements: a week of monitor data, not an estimate from past bills
+  return { m, ym, bill, fpaUnits, basis, recentAvg: Math.round(avg), counter: false, missingDays: 0, countFrom: 0, // both need real measurements: a week of monitor data, not an estimate from past bills
     saved: m.covered >= 7 ? withoutSolar.total - bill.total : 0,
-    alert: basis === 'monitor' && m.covered >= 3 ? unitAlert(m.soFar, m.projected, cfg) : null }
+    alert: basis !== 'bills' && (measured || m.covered >= 3) ? unitAlert(m.soFar, m.projected, cfg) : null }
 }
 
 export function BillCard({ byDate, today }: { byDate: Map<number, DayRec>; today: number }) {
   const cfg = useStore((s) => s.bill) ?? DEFAULT_BILL
+  const cyc = useStore((s) => s.live?.cyc)
+  const t = useStore((s) => s.live?.t)
   const [open, setOpen] = useState(false)
-  const { m, ym, bill, saved, alert, basis, recentAvg } = billNow(byDate, today, cfg)
+  const { m, ym, bill, saved, alert, basis, recentAvg, counter, missingDays, countFrom } = billNow(byDate, today, cfg, { now: t || Date.now(), cyc })
+  const since = `${dayLabel(m.start, { day: 'numeric', month: 'short' })}, ${hourText(cfg.hr)}`
   const limit = cfg.ps[cfg.ps.length - 1][0]
   const left = m.totalDays - m.elapsed
   const hist = protectedFromHistory(byDate, today, cfg)
@@ -126,7 +189,7 @@ export function BillCard({ byDate, today }: { byDate: Map<number, DayRec>; today
       <CardHeader
         title="Electricity bill estimate"
         info={<BillInfo limit={limit} />}
-        sub={`${monthName(ym, { month: 'long', year: 'numeric' })} bill · reading ${dayLabel(m.start, { day: 'numeric', month: 'short' })} – ${dayLabel(nextCycle(m.start), { day: 'numeric', month: 'short' })} · day ${m.elapsed} of ${m.totalDays}`}
+        sub={`${monthName(ym, { month: 'long', year: 'numeric' })} bill · reading ${dayLabel(m.start, { day: 'numeric', month: 'short' })} – ${dayLabel(nextCycle(m.start), { day: 'numeric', month: 'short' })}, ${hourText(cfg.hr)} · day ${m.elapsed} of ${m.totalDays}`}
         action={<span className={cn('rounded-full px-3 py-1 text-xs font-semibold', cfg.st === 'p' ? 'bg-good/15 text-good' : 'bg-warn/15 text-warn')}>{cfg.st === 'p' ? 'Protected' : 'Unprotected'}</span>}
       />
       <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
@@ -135,8 +198,8 @@ export function BillCard({ byDate, today }: { byDate: Map<number, DayRec>; today
           <Value text={fmtPkr(bill.total)} className="text-4xl tracking-tight" />
         </div>
         <div>
-          <p className="text-xs text-text-3">Grid units</p>
-          <p className="num text-lg font-semibold">{Math.round(m.soFar)} so far → ≈ {Math.round(m.projected)}</p>
+          <p className="text-xs text-text-3">Grid units {basis === 'measured' ? `used since ${counter ? since : dayLabel(m.start, { day: 'numeric', month: 'short' })}` : 'so far (estimated)'}</p>
+          <p className="num text-lg font-semibold">{basis === 'measured' ? (m.soFar < 10 ? m.soFar.toFixed(1) : Math.round(m.soFar)) : `≈ ${Math.round(m.soFar)}`} → ≈ {Math.round(m.projected)} by the reading</p>
         </div>
         {saved > 1 && (
           <div>
@@ -156,7 +219,7 @@ export function BillCard({ byDate, today }: { byDate: Map<number, DayRec>; today
         <div className="num relative mt-1 h-4 text-[11px] text-text-3">
           {[100, limit].map((u) => <span key={u} className="absolute -translate-x-1/2" style={{ left: pct(u) }}>{u}</span>)}
         </div>
-        <p className="mt-1 text-xs text-text-3">dark = used so far · light = expected by the meter reading{basis === 'bills' ? ` · the monitor has only ${m.covered} day${m.covered === 1 ? '' : 's'} of this month, so this uses your last bills (about ${recentAvg} units)` : m.covered < m.elapsed ? ` · the monitor has ${m.covered} of ${m.elapsed} days, the rest are estimated` : ''}</p>
+        <p className="mt-1 text-xs text-text-3">dark = used so far · light = expected by the meter reading{counter ? (countFrom ? ` · the monitor started counting on ${dayLabel(ymd(new Date(countFrom)), { day: 'numeric', month: 'short' })}, ${hhmm(countFrom)}; the days before are estimated from your bills (about ${recentAvg} units a month). From the next reading on, every unit is counted.` : ` · counted live by the monitor since the reading (${since})${missingDays > 0.25 ? `; it was off for about ${missingDays < 1 ? Math.round(missingDays * 24) + ' hours' : missingDays.toFixed(1) + ' days'}, filled in at the usual rate` : ''}${m.covered < 7 && recentAvg ? `; the forecast leans on your last bills (about ${recentAvg} units) until a week is measured` : ''}`) : basis === 'measured' ? ` · counted by the monitor from the inverter since the reading on ${dayLabel(m.start, { day: 'numeric', month: 'short' })}${m.covered < 7 && recentAvg ? `; the rest of the month uses your last bills (about ${recentAvg} units) until a week is measured` : ''}` : basis === 'bills' ? ` · the monitor has only ${m.covered} day${m.covered === 1 ? '' : 's'} of this month, so this uses your last bills (about ${recentAvg} units)` : m.covered < m.elapsed ? ` · the monitor has ${m.covered} of ${m.elapsed} days, the rest are estimated` : ''}</p>
       </div>
 
       {advice && <div className="mt-3">{advice}</div>}
@@ -234,3 +297,5 @@ function BillInfo({ limit }: { limit: number }) {
     </>
   )
 }
+
+const hourText = hourLabel
