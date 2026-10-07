@@ -3,7 +3,7 @@
 //  Solar Monitor v3 - settings you may want to change
 // ============================================================================
 
-#define FW_VERSION "3.0.0"
+#define FW_VERSION "3.1.0"
 
 // Network name: the dashboard is also reachable at http://solar.local/
 #define HOSTNAME "solar"
@@ -53,6 +53,6 @@
 #define HEARTBEAT_MS       5000    // push to browsers at least this often even if nothing changed
 
 // History storage on the ESP32's flash
-#define KEEP_MINUTE_DAYS   45      // per-minute files kept (also trimmed if flash gets full)
+#define KEEP_MINUTE_DAYS   20      // per-minute files kept on the ESP (the logger keeps long history); also trimmed if flash fills
 #define KEEP_DAY_RECORDS   800     // daily totals kept (~2 years)
 #define RECENT_SAMPLES     1200    // high-resolution ring for the live chart (~15-20 min)

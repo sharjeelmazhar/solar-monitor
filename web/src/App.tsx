@@ -1,0 +1,154 @@
+import { BarChart3, CalendarClock, Cpu, Gauge, Monitor, Moon, PlugZap, Sun } from 'lucide-react'
+import { motion } from 'motion/react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { IconButton, cn } from './components/ui/ui'
+import { hhmmss } from './lib/format'
+import { useTheme, type Theme } from './lib/prefs'
+import { useStore } from './lib/store'
+import EnergyPage from './pages/EnergyPage'
+import HistoryPage from './pages/HistoryPage'
+import OutagesPage from './pages/OutagesPage'
+import OverviewPage from './pages/OverviewPage'
+import SystemPage from './pages/SystemPage'
+
+const TABS = [
+  { id: 'overview', label: 'Live', icon: Gauge },
+  { id: 'history', label: 'History', icon: CalendarClock },
+  { id: 'energy', label: 'Energy', icon: BarChart3 },
+  { id: 'outages', label: 'Outages', icon: PlugZap },
+  { id: 'system', label: 'System', icon: Cpu },
+] as const
+type Tab = (typeof TABS)[number]['id']
+
+function useRoute(): [Tab, (t: Tab) => void] {
+  const get = () => (TABS.find((t) => location.hash === '#/' + t.id)?.id ?? 'overview') as Tab
+  const [tab, setTab] = useState<Tab>(get)
+  useEffect(() => {
+    const on = () => setTab(get())
+    addEventListener('hashchange', on)
+    return () => removeEventListener('hashchange', on)
+  }, [])
+  return [tab, (t) => { location.hash = '/' + t; window.scrollTo({ top: 0 }) }]
+}
+
+export default function App() {
+  const [tab, go] = useRoute()
+  const { theme, setTheme, dark } = useTheme()
+  const name = useStore((s) => s.info?.name)
+  const title = name && name !== 'Solar' ? name : 'Solar Monitor'
+  useEffect(() => { document.title = title }, [title])
+  const nextTheme: Record<Theme, Theme> = { system: dark ? 'light' : 'dark', light: 'dark', dark: 'system' }
+  const ThemeIcon = theme === 'system' ? Monitor : theme === 'dark' ? Moon : Sun
+
+  let page: ReactNode
+  if (tab === 'history') page = <HistoryPage />
+  else if (tab === 'energy') page = <EnergyPage />
+  else if (tab === 'outages') page = <OutagesPage />
+  else if (tab === 'system') page = <SystemPage theme={theme} setTheme={setTheme} />
+  else page = <OverviewPage dark={dark} />
+
+  return (
+    <div className="mx-auto min-h-dvh max-w-[1400px] px-4 pb-[calc(88px+env(safe-area-inset-bottom))] sm:px-6 md:pb-10">
+      <header className="sticky top-0 z-30 -mx-4 mb-4 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-xl sm:-mx-6 sm:px-6" style={{ background: 'color-mix(in srgb, var(--bg) 78%, transparent)' }}>
+        <div className="flex min-h-16 items-center gap-3">
+          <Logo />
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
+            <Clock />
+          </div>
+          <nav className="hidden items-center gap-1 rounded-2xl bg-surface-2 p-1 md:flex" aria-label="Sections">
+            {TABS.map((t) => (
+              <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined}
+                className={cn('focus-ring relative flex min-h-9 items-center gap-2 rounded-xl px-3 text-sm font-medium transition-colors', tab === t.id ? 'text-text' : 'text-text-2 hover:text-text')}>
+                {tab === t.id && <motion.span layoutId="tab" className="absolute inset-0 rounded-xl bg-surface-solid shadow-sm ring-1 ring-border" transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }} />}
+                <t.icon size={16} className="relative" />
+                <span className="relative">{t.label}</span>
+              </button>
+            ))}
+          </nav>
+          <StatusPill />
+          <IconButton label={`Theme: ${theme}`} onClick={() => setTheme(nextTheme[theme])}><ThemeIcon size={18} /></IconButton>
+        </div>
+      </header>
+
+      {/* entry-only fade: an exit animation can stall in throttled/background tabs and block the new page */}
+      <motion.main key={tab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+        {page}
+      </motion.main>
+
+      <nav className="glass fixed inset-x-3 bottom-[calc(10px+env(safe-area-inset-bottom))] z-30 flex rounded-3xl p-1.5 md:hidden" aria-label="Sections">
+        {TABS.map((t) => (
+          <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined}
+            className={cn('focus-ring relative flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl text-[11px] font-medium', tab === t.id ? 'text-text' : 'text-text-3')}>
+            {tab === t.id && <motion.span layoutId="mtab" className="absolute inset-0 rounded-2xl bg-surface-3" transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }} />}
+            <t.icon size={19} className="relative" />
+            <span className="relative">{t.label}</span>
+          </button>
+        ))}
+      </nav>
+    </div>
+  )
+}
+
+function Logo() {
+  return (
+    <div className="relative grid size-10 shrink-0 place-items-center rounded-2xl bg-surface-2 ring-1 ring-border">
+      <span className="absolute inset-1 rounded-xl bg-solar/20 blur-md" />
+      <svg viewBox="0 0 32 32" className="relative size-6" aria-hidden>
+        <circle cx="16" cy="16" r="6.5" fill="var(--solar)" />
+        <g stroke="var(--solar)" strokeWidth="2.6" strokeLinecap="round">
+          <path d="M16 2.5v3.5M16 26v3.5M2.5 16H6M26 16h3.5M6.5 6.5l2.4 2.4M23.1 23.1l2.4 2.4M6.5 25.5l2.4-2.4M23.1 8.9l2.4-2.4" />
+        </g>
+      </svg>
+    </div>
+  )
+}
+
+function Clock() {
+  const t = useStore((s) => s.live?.t ?? 0)
+  const at = useStore((s) => s.lastMsgAt)
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const i = setInterval(() => tick((x) => x + 1), 1000)
+    return () => clearInterval(i)
+  }, [])
+  const now = t ? new Date(t + (performance.now() - at)) : new Date()
+  return (
+    <p className="num truncate text-xs text-text-3">
+      {now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} · {hhmmss(now.getTime())}
+    </p>
+  )
+}
+
+function StatusPill() {
+  const conn = useStore((s) => s.conn)
+  const ok = useStore((s) => s.live?.ok)
+  const ever = useStore((s) => s.live?.ever)
+  const at = useStore((s) => s.lastMsgAt)
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const i = setInterval(() => tick((x) => x + 1), 1000)
+    return () => clearInterval(i)
+  }, [])
+  const ago = at ? Math.round((performance.now() - at) / 1000) : null
+  let text = 'Connecting'
+  let tone = 'var(--text-3)'
+  let pulse = false
+  if (conn === 'offline') { text = 'Offline'; tone = 'var(--crit)' }
+  else if (ever === false) { text = 'No inverter'; tone = 'var(--crit)' }
+  else if (ok === false) { text = 'Inverter silent'; tone = 'var(--crit)' }
+  else if (conn === 'reconnecting') { text = 'Reconnecting'; tone = 'var(--warn)' }
+  else if (conn === 'live' && ago != null) {
+    if (ago > 10) { text = `${ago}s ago`; tone = 'var(--warn)' } else { text = 'Live'; tone = 'var(--good)'; pulse = true }
+  }
+  return (
+    <div className="flex min-h-10 items-center gap-2 rounded-2xl border border-border bg-surface-2 px-3 text-sm font-medium" role="status" aria-live="polite">
+      <span className="relative flex size-2.5">
+        {pulse && <span className="absolute inline-flex size-full animate-ping rounded-full opacity-60" style={{ background: tone }} />}
+        <span className="relative inline-flex size-2.5 rounded-full" style={{ background: tone }} />
+      </span>
+      <span className="hidden sm:inline">{text}</span>
+      <span className="sr-only sm:hidden">{text}</span>
+    </div>
+  )
+}

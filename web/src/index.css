@@ -1,0 +1,172 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@font-face {
+  font-family: 'Geist';
+  src: url('./assets/fonts/geist.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('./assets/fonts/geist-mono.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* Design tokens. Energy colours keep their meaning in both themes (yellow = solar, blue = home,
+   green = battery, pink = grid, violet = inverter); dark values are re-stepped for the dark surface. */
+:root {
+  --bg: #f4f5f8;
+  --bg-glow-1: rgba(245, 179, 0, 0.10);
+  --bg-glow-2: rgba(59, 130, 246, 0.08);
+  --surface: rgba(255, 255, 255, 0.78);
+  --surface-solid: #ffffff;
+  --surface-2: #f1f2f6;
+  --surface-3: #e7e9ef;
+  --border: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.14);
+  --grid-line: rgba(15, 23, 42, 0.07);
+  --text: #0b1020;
+  --text-2: #4a5165;
+  --text-3: #646b80;
+  --solar: #e09400;
+  --load: #2a78d6;
+  --batt: #13a571;
+  --grid: #d9558b;
+  --inv: #5b47d6;
+  --good: #0ca30c;
+  --warn: #e39a00;
+  --crit: #d03b3b;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -8px rgba(15, 23, 42, 0.10);
+  --glow-strength: 0.35;
+  color-scheme: light;
+}
+.dark {
+  --bg: #07090f;
+  --bg-glow-1: rgba(245, 179, 0, 0.10);
+  --bg-glow-2: rgba(80, 120, 255, 0.12);
+  --surface: rgba(17, 21, 33, 0.72);
+  --surface-solid: #10141f;
+  --surface-2: rgba(255, 255, 255, 0.04);
+  --surface-3: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --grid-line: rgba(255, 255, 255, 0.06);
+  --text: #f3f5fb;
+  --text-2: #aab1c5;
+  --text-3: #8a92a8;
+  --solar: #f5b300;
+  --load: #4f9cff;
+  --batt: #2fd38f;
+  --grid: #f0679f;
+  --inv: #9d8cff;
+  --good: #34d058;
+  --warn: #fab219;
+  --crit: #ff5d5d;
+  --shadow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  --glow-strength: 0.75;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-solid: var(--surface-solid);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-solar: var(--solar);
+  --color-load: var(--load);
+  --color-batt: var(--batt);
+  --color-grid: var(--grid);
+  --color-inv: var(--inv);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-crit: var(--crit);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  background: var(--bg);
+}
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background:
+    radial-gradient(60rem 40rem at 10% -10%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(50rem 40rem at 100% 0%, var(--bg-glow-2), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-feature-settings: 'ss01', 'cv11';
+  -webkit-font-smoothing: antialiased;
+}
+/* faint technical grid, fades out towards the bottom */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 70%);
+  z-index: 0;
+}
+#root {
+  position: relative;
+  z-index: 1;
+}
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.glass {
+  background: var(--surface);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 2px solid var(--load);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pulse-soft {
+  50% {
+    opacity: 0.55;
+  }
+}
+@keyframes wave {
+  to {
+    stroke-dashoffset: -24;
+  }
+}

@@ -11,8 +11,9 @@ showed a grid cut about 5 minutes late in a side-by-side test.)
 
 | Path | What it is |
 |---|---|
-| `firmware/solar_monitor_v3/` | ESP32-C3 firmware (Arduino). Reads the inverter, serves REST + live streams, keeps a small history buffer. |
-| `firmware/embedded-web/` | Lightweight dashboard built into the firmware (fallback when no logger is running). Packed by `firmware/build_web.ps1`. |
+| `firmware/solar_monitor_v3/` | ESP32-C3 firmware (Arduino). Reads the inverter, serves REST + live streams, keeps a small history buffer, hosts the web app. |
+| `web/` | Web dashboard: React + Vite + TypeScript, Tailwind, Base UI, Motion, three.js (lazy 3D). Stored on the ESP32's flash and served at `http://solar.local/`. |
+| `firmware/embedded-web/` | Small dashboard built into the firmware; fallback at `/classic`. Packed by `firmware/build_web.ps1`. |
 | `firmware/test/` | Host-side unit tests for the inverter protocol (CRC, parsing, malformed replies). |
 | `firmware/legacy/`, `firmware/tools/` | Earlier firmware and wiring/debug sketches. |
 | `android/` | Native Android app (Kotlin, Jetpack Compose, Material 3). |
@@ -43,6 +44,27 @@ RJ45 pin 1 = inverter TX, pin 2 = inverter RX, pin 8 = GND. Never wire RS232 str
 3. After editing the built-in dashboard, run `firmware/build_web.ps1`.
 4. Later updates go over Wi-Fi: `curl -u admin:<your-admin-password> -F "fw=@solar_monitor_v3.ino.bin" http://solar.local/update`.
 
+## Web dashboard
+
+```bash
+cd web
+npm install
+npm run dev      # http://localhost:5173, proxied to the monitor (set DEVICE_URL in web/.env.local)
+npm test
+npm run deploy   # builds, gzips and uploads to the monitor's flash (needs ADMIN_PASS in web/.env.local)
+```
+
+`web/.env.local` (git-ignored):
+
+```
+DEVICE_URL=http://solar.local
+ADMIN_PASS=<your admin password from secrets.h>
+```
+
+Pages: Live (energy flow with direction-aware particles, optional 3D core), History (any day, CSV export),
+Energy (month / 7 / 30 days / year / custom range, solar units and savings), Outages (load-shedding log,
+hour-of-day heat map, timeline), System (inverter settings explained, device status, your settings, theme).
+
 ## Device API
 
 | Endpoint | Returns |
@@ -53,6 +75,7 @@ RJ45 pin 1 = inverter TX, pin 2 = inverter RX, pin 8 = GND. Never wire RS232 str
 | `GET /api/info` | Device, Wi-Fi, storage, settings, raw inverter ratings (`QPIRI`, `QID`, `QVFW`, `QFLAG`). |
 | `GET /api/recent` | Binary, 16 B per sample: u32 t, u16 ms, u16 pvW, loadW, gridW, i16 battW, u8 battPct, u8 flags. |
 | `GET /api/day?d=YYYYMMDD` | Binary, 24 B per minute: u32 t, u16 pvW, loadW, gridW, i16 battW, u16 battV×100, pvV×10, gridV×10, outV×10, u8 battPct, i8 tempC, u8 mode, u8 flags. |
+| `GET /api/www`, `POST /api/www?path=…`, `POST /api/www/delete?path=…` | List / upload (admin) / delete (admin) web app files in flash. |
 | `GET /api/days` | Binary, 40 B per day: u32 date, f32 pvWh, loadWh, gridWh, chgWh, disWh, u16 pvPeak, loadPeak, gridOnMin, onlineMin, u8 battMin, battMax, i8 tempMax, u8 outages, u32 reserved. |
 | `POST /api/settings` | `battAh`, `tariff`, `name`, `tz`. |
 | `POST /api/time` | `t` = epoch seconds (only used when NTP isn't reachable). |

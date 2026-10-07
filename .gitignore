@@ -25,3 +25,7 @@ playwright-report/
 test-results/
 .DS_Store
 Thumbs.db
+
+# local tool settings
+.claude/
+*.tsbuildinfo

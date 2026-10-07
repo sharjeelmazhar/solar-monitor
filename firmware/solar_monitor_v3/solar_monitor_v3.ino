@@ -496,6 +496,19 @@ static String param(AsyncWebServerRequest* r, const char* name) {
   return String();
 }
 
+static bool wwwUploadFailed = false;   // uploads are sent one at a time by deploy.mjs
+
+// Only simple relative paths inside /www: "index.html.gz", "favicon.svg", "assets/<name>"
+static bool wwwPathOk(const String& p) {
+  if (p.isEmpty() || p.length() > 48 || p.indexOf("..") >= 0 || p.startsWith("/")) return false;
+  for (size_t i = 0; i < p.length(); i++) {
+    char c = p[i];
+    if (!(isalnum((unsigned char)c) || c == '.' || c == '-' || c == '_' || c == '/')) return false;
+  }
+  int slash = p.indexOf('/');
+  return slash < 0 ? true : (p.startsWith("assets/") && p.indexOf('/', 7) < 0);
+}
+
 static const char UPDATE_PAGE[] PROGMEM = R"HTML(<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Firmware update</title><body style="font-family:system-ui;max-width:480px;margin:40px auto;padding:0 16px">
 <h2>Firmware update</h2><p>Select the compiled <b>.bin</b> file (Arduino: Sketch &rarr; Export compiled binary).</p>
@@ -506,12 +519,75 @@ static void setupWeb() {
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "*");
 
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest* r) {
+  // Dashboard: the full web app lives in flash (/www, uploaded with web/scripts/deploy.mjs);
+  // the small built-in dashboard is the fallback and stays reachable at /classic.
+  auto classic = [](AsyncWebServerRequest* r) {
     AsyncWebServerResponse* res = r->beginResponse(200, "text/html", INDEX_HTML_GZ, INDEX_HTML_GZ_LEN);
     res->addHeader("Content-Encoding", "gzip");
     res->addHeader("Cache-Control", "no-cache");
     r->send(res);
+  };
+  server.on("/classic", HTTP_GET, classic);
+  server.on("/", HTTP_GET, [classic](AsyncWebServerRequest* r) {
+    if (fsOk && LittleFS.exists("/www/index.html.gz")) {
+      AsyncWebServerResponse* res = r->beginResponse(LittleFS, "/www/index.html.gz", "text/html");
+      res->addHeader("Content-Encoding", "gzip");
+      res->addHeader("Cache-Control", "no-cache");
+      r->send(res);
+    } else {
+      classic(r);
+    }
   });
+  // hashed file names never change content, so browsers may cache them for a year
+  server.serveStatic("/assets/", LittleFS, "/www/assets/").setCacheControl("public, max-age=31536000, immutable");
+  server.serveStatic("/favicon.svg", LittleFS, "/www/favicon.svg").setCacheControl("public, max-age=86400");
+
+  // Web app upload (admin): POST /api/www?path=assets/x.js.gz (multipart file), GET /api/www (list), POST /api/www/delete?path=...
+  server.on("/api/www", HTTP_GET, [](AsyncWebServerRequest* r) {
+    String s = "[";
+    File dir = LittleFS.open("/www/assets");
+    bool first = true;
+    if (dir) for (File f = dir.openNextFile(); f; f = dir.openNextFile()) {
+      if (!first) s += ",";
+      s += "\"assets/" + String(f.name()) + "\"";
+      first = false;
+      f.close();
+    }
+    for (const char* top : {"index.html.gz", "favicon.svg"}) {
+      if (LittleFS.exists(String("/www/") + top)) { if (!first) s += ","; s += String("\"") + top + "\""; first = false; }
+    }
+    s += "]";
+    sendJson(r, s);
+  });
+  server.on("/api/www/delete", HTTP_POST, [](AsyncWebServerRequest* r) {
+    if (needAdmin(r)) return;
+    String p = param(r, "path");
+    if (!wwwPathOk(p)) { r->send(400, "text/plain", "bad path"); return; }
+    bool ok = LittleFS.remove("/www/" + p);
+    sendJson(r, ok ? "{\"ok\":true}" : "{\"ok\":false}");
+  });
+  server.on("/api/www", HTTP_POST,
+    [](AsyncWebServerRequest* r) {
+      if (!r->authenticate(ADMIN_USER, ADMIN_PASS)) { r->requestAuthentication(AsyncAuthType::AUTH_BASIC); return; }
+      bool ok = !wwwUploadFailed;
+      sendJson(r, ok ? "{\"ok\":true}" : "{\"ok\":false}");
+    },
+    [](AsyncWebServerRequest* r, const String& filename, size_t index, uint8_t* data, size_t len, bool final) {
+      static File out;
+      if (!r->authenticate(ADMIN_USER, ADMIN_PASS)) return;
+      String p = param(r, "path");
+      if (index == 0) {
+        wwwUploadFailed = false;
+        if (out) out.close();
+        if (!wwwPathOk(p)) { wwwUploadFailed = true; return; }
+        if (!LittleFS.exists("/www")) LittleFS.mkdir("/www");
+        if (!LittleFS.exists("/www/assets")) LittleFS.mkdir("/www/assets");
+        out = LittleFS.open("/www/" + p, "w");
+        if (!out) { wwwUploadFailed = true; return; }
+      }
+      if (out && len && out.write(data, len) != len) { wwwUploadFailed = true; out.close(); }
+      if (final && out) out.close();
+    });
 
   events.onConnect([](AsyncEventSourceClient* c) {
     static char out[sizeof(liveJson)];
