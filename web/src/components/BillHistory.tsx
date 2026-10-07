@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useStore } from '../lib/store'
 import { billInsights, DEFAULT_BILL } from '../lib/bill'
 import { fmtPkr } from '../lib/format'
@@ -10,6 +11,7 @@ const TONE = { good: 'var(--good)', warn: 'var(--warn)', crit: 'var(--crit)', in
 export function BillHistory() {
   const cfg = useStore((s) => s.bill) ?? DEFAULT_BILL
   const hist = cfg.hist
+  const [sel, setSel] = useState<number | null>(null)
   if (hist.length < 2) return null
   const limit = cfg.ps[cfg.ps.length - 1][0]
   const max = Math.max(limit * 1.15, ...hist.map((b) => b[1]))
@@ -23,7 +25,8 @@ export function BillHistory() {
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible" role="img" aria-label="Units per bill">
           {hist.map((b, i) => (
             <rect key={b[0]} x={i * W + W * 0.15} width={W * 0.7} y={y(b[1])} height={100 - y(b[1])} rx={0.8}
-              fill={b[1] > limit ? 'var(--crit)' : b[1] >= limit - 25 ? 'var(--warn)' : 'var(--grid)'} opacity={i === hist.length - 1 ? 1 : 0.8}>
+              fill={b[1] > limit ? 'var(--crit)' : b[1] >= limit - 25 ? 'var(--warn)' : 'var(--grid)'}
+              opacity={sel == null ? (i === hist.length - 1 ? 1 : 0.8) : sel === i ? 1 : 0.35} className="cursor-pointer" onClick={() => setSel(sel === i ? null : i)}>
               <title>{`${monthName(b[0], { month: 'long', year: 'numeric' })}: ${b[1]} units${b[2] ? ', ' + fmtPkr(b[2]) : ''}`}</title>
             </rect>
           ))}
@@ -36,7 +39,20 @@ export function BillHistory() {
           <span key={b[0]} className="text-center" style={{ width: `${W}%` }}>{(i % Math.ceil(hist.length / 10) === 0 && i < hist.length - 2) || i === hist.length - 1 ? monthName(b[0], { month: 'short' }).slice(0, 3) : ''}</span>
         ))}
       </div>
-      <ul className="mt-4 grid gap-1.5 text-sm">
+      {sel != null && hist[sel] && (() => {
+        const b = hist[sel]
+        const prev = hist.find((x) => x[0] === b[0] - 100)
+        return (
+          <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-2xl bg-surface-2 px-4 py-3 text-sm">
+            <b className="font-semibold">{monthName(b[0], { month: 'long', year: 'numeric' })}</b>
+            <span className="num"><b className={b[1] > limit ? 'text-crit' : ''}>{b[1]}</b> units</span>
+            {b[2] > 0 && <span className="num">{fmtPkr(b[2])} · Rs {(b[2] / b[1]).toFixed(1)}/unit</span>}
+            <span className="text-text-3">{b[1] > limit ? 'over the protected limit' : `${limit - b[1]} units under ${limit}`}{prev ? ` · ${b[1] - prev[1] >= 0 ? '+' : ''}${b[1] - prev[1]} units vs a year before` : ''}</span>
+          </div>
+        )
+      })()}
+      <p className="mt-2 text-xs text-text-3">Tap a bar to see that bill.</p>
+      <ul className="mt-3 grid gap-1.5 text-sm">
         {billInsights(hist, limit).map((x, i) => (
           <li key={i} className="flex items-start gap-2.5 leading-relaxed">
             <span className="mt-[0.45em] size-2.5 shrink-0 rounded-full" style={{ background: TONE[x.tone] }} />

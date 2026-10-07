@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 860" font-family="Arial, Helvetica, sans-serif">
+  <!-- Illustration of an IESCO bill (2026 layout). No real data: grey bars stand for text that does not matter here. -->
+  <defs>
+    <style>
+      .t{font-size:10px;fill:#33415c;font-weight:700}
+      .v{font-size:13px;fill:#0b1020;font-weight:700}
+      .g{fill:#c9d0dc}
+      .cell{fill:#fff;stroke:#7a8aa8;stroke-width:1}
+      .hd{fill:#cfe3f3}
+      .box{fill:none;stroke:#e5007a;stroke-width:3;rx:6}
+      .tag{fill:#e5007a}
+      .tagt{font-size:13px;font-weight:700;fill:#fff;text-anchor:middle}
+    </style>
+  </defs>
+  <rect width="600" height="860" rx="14" fill="#eef3fb"/>
+  <!-- header -->
+  <rect x="18" y="16" width="564" height="58" rx="6" fill="#fff" stroke="#7a8aa8"/>
+  <circle cx="52" cy="45" r="20" fill="#d9e4f5" stroke="#3a5a9a"/>
+  <text x="86" y="40" font-size="17" font-weight="700" fill="#1c3f8f">ISLAMABAD ELECTRIC SUPPLY COMPANY</text>
+  <text x="86" y="60" font-size="13" font-weight="700" fill="#2a7ac8">ELECTRICITY CONSUMER BILL</text>
+
+  <!-- top row: load / ED / bill month / reading date / due date -->
+  <g transform="translate(18,82)">
+    <rect class="cell" width="110" height="46"/><text class="t" x="6" y="14">CONNECTED LOAD</text><rect class="g" x="6" y="24" width="60" height="10" rx="3"/>
+    <rect class="cell" x="110" width="60" height="46"/><text class="t" x="116" y="14">ED@</text><text class="v" x="116" y="36">1.5%</text>
+    <rect class="cell" x="170" width="110" height="46"/><text class="t" x="176" y="14">BILL MONTH</text><text class="v" x="176" y="36">SEP 26</text>
+    <rect class="cell" x="280" width="110" height="46"/><text class="t" x="286" y="14">READING DATE</text><text class="v" x="286" y="36">08 SEP 26</text>
+    <rect class="cell" x="390" width="87" height="46"/><text class="t" x="396" y="14">ISSUE DATE</text><rect class="g" x="396" y="24" width="60" height="10" rx="3"/>
+    <rect class="cell" x="477" width="87" height="46"/><text class="t" x="483" y="14">DUE DATE</text><rect class="g" x="483" y="24" width="60" height="10" rx="3"/>
+  </g>
+  <!-- consumer id / tariff / load -->
+  <g transform="translate(18,128)">
+    <rect class="cell" width="170" height="46"/><text class="t" x="6" y="14">CONSUMER ID</text><rect class="g" x="6" y="24" width="120" height="10" rx="3"/>
+    <rect class="cell" x="170" width="90" height="46"/><text class="t" x="176" y="14">TARIFF</text><text class="v" x="176" y="36">A-1a(01)</text>
+    <rect class="cell" x="260" width="70" height="46"/><text class="t" x="266" y="14">LOAD</text><text class="v" x="266" y="36">1.00</text>
+    <rect class="cell" x="330" width="234" height="46"/><text class="t" x="336" y="14">DIVISION / SUB DIVISION</text><rect class="g" x="336" y="24" width="150" height="10" rx="3"/>
+  </g>
+  <!-- name + meter (left), history (right) -->
+  <g transform="translate(18,182)">
+    <rect class="cell" width="300" height="118"/><text class="t" x="6" y="14">NAME &amp; ADDRESS</text>
+    <rect class="g" x="6" y="26" width="200" height="11" rx="3"/><rect class="g" x="6" y="44" width="160" height="11" rx="3"/><rect class="g" x="6" y="62" width="180" height="11" rx="3"/><rect class="g" x="6" y="80" width="110" height="11" rx="3"/>
+    <rect class="cell" y="126" width="300" height="56"/>
+    <text class="t" x="6" y="140">METER No</text><text class="t" x="70" y="140">PREVIOUS</text><text class="t" x="138" y="140">PRESENT</text><text class="t" x="204" y="140">MF</text><text class="t" x="240" y="140">UNITS</text>
+    <rect class="g" x="6" y="152" width="50" height="10" rx="3"/><text class="v" x="70" y="164">24972</text><text class="v" x="138" y="164">25138</text><text class="v" x="204" y="164">1</text><text class="v" x="240" y="164">166</text>
+  </g>
+  <g transform="translate(326,182)">
+    <rect class="cell" width="256" height="182"/>
+    <rect class="hd" x="1" y="1" width="254" height="18"/>
+    <text class="t" x="8" y="14">MONTH</text><text class="t" x="80" y="14">UNITS</text><text class="t" x="140" y="14">BILL</text><text class="t" x="200" y="14">PAYMENT</text>
+    <g font-size="11" fill="#0b1020" font-weight="700">
+      <text x="8" y="36">Jun 26</text><text x="86" y="36">170</text><text x="140" y="36">2894</text>
+      <text x="8" y="54">Jul 26</text><text x="86" y="54">181</text><text x="140" y="54">2579</text>
+      <text x="8" y="72">Aug 26</text><text x="86" y="72">180</text><text x="140" y="72">2678</text>
+    </g>
+    <rect class="g" x="8" y="82" width="230" height="9" rx="3"/><rect class="g" x="8" y="98" width="230" height="9" rx="3"/><rect class="g" x="8" y="114" width="230" height="9" rx="3"/><rect class="g" x="8" y="130" width="230" height="9" rx="3"/>
+    <text x="8" y="166" font-size="10" font-weight="700" fill="#33415c">FPA on 181 units of Jul @ 2.0581</text>
+  </g>
+
+  <!-- charges -->
+  <g transform="translate(18,378)">
+    <rect class="hd" width="200" height="22"/><text class="t" x="8" y="15">IESCO CHARGES</text>
+    <g class="t">
+      <rect class="cell" y="22" width="200" height="26"/><text x="8" y="39">UNITS CONSUMED</text><text class="v" x="150" y="40">166</text>
+      <rect class="cell" y="48" width="200" height="26"/><text x="8" y="65">COST OF ELECTRICITY</text><text class="v" x="132" y="66">1912.66</text>
+      <rect class="cell" y="74" width="200" height="26"/><text x="8" y="91">FIXED CHARGES</text><text class="v" x="140" y="92">300.00</text>
+      <rect class="cell" y="100" width="200" height="26"/><text x="8" y="117">FUEL PRICE ADJ.</text><text class="v" x="140" y="118">372.52</text>
+      <rect class="cell" y="126" width="200" height="26"/><text x="8" y="143">F.C SURCHARGE</text><text class="v" x="148" y="144">71.38</text>
+      <rect class="cell" y="152" width="200" height="26"/><text x="8" y="169">QTR. TARIFF ADJ.</text><text class="v" x="132" y="170">-235.72</text>
+      <rect class="cell" y="178" width="200" height="26"/><text x="8" y="195">TOTAL</text><rect class="g" x="132" y="186" width="56" height="10" rx="3"/>
+    </g>
+  </g>
+  <g transform="translate(226,378)">
+    <rect class="hd" width="170" height="22"/><text class="t" x="8" y="15">GOVT CHARGES</text>
+    <g class="t">
+      <rect class="cell" y="22" width="170" height="26"/><text x="8" y="39">E.D.</text><rect class="g" x="110" y="30" width="48" height="10" rx="3"/>
+      <rect class="cell" y="48" width="170" height="26"/><text x="8" y="65">TV FEE</text>
+      <rect class="cell" y="74" width="170" height="26"/><text x="8" y="91">GST</text><rect class="g" x="110" y="82" width="48" height="10" rx="3"/>
+      <rect class="cell" y="100" width="170" height="26"/><text x="8" y="117">INCOME TAX</text>
+      <rect class="cell" y="126" width="170" height="26"/><text x="8" y="143">GST ON FPA</text><rect class="g" x="110" y="134" width="48" height="10" rx="3"/>
+      <rect class="cell" y="152" width="170" height="26"/><text x="8" y="169">ED ON FPA</text><rect class="g" x="110" y="160" width="48" height="10" rx="3"/>
+      <rect class="cell" y="178" width="170" height="26"/><text x="8" y="195">TOTAL</text><rect class="g" x="110" y="186" width="48" height="10" rx="3"/>
+    </g>
+  </g>
+  <g transform="translate(404,378)">
+    <rect class="hd" width="178" height="22"/><text class="t" x="8" y="15">ARREAR / AGE</text>
+    <g class="t">
+      <rect class="cell" y="22" width="178" height="26"/><text x="8" y="39">CURRENT BILL</text><rect class="g" x="120" y="30" width="48" height="10" rx="3"/>
+      <rect class="cell" y="48" width="178" height="26"/><text x="8" y="65">TOTAL FPA</text><rect class="g" x="120" y="56" width="48" height="10" rx="3"/>
+      <rect class="cell" y="74" width="178" height="52" fill="#fff6c4"/><text x="8" y="91">PAYABLE WITHIN</text><text x="8" y="104">DUE DATE</text><text class="v" x="122" y="106">2894</text>
+      <rect class="cell" y="126" width="178" height="52"/><text x="8" y="143">PAYABLE AFTER</text><text x="8" y="156">DUE DATE</text><rect class="g" x="120" y="146" width="48" height="10" rx="3"/>
+    </g>
+  </g>
+  <rect x="18" y="600" width="564" height="80" rx="4" class="g" opacity=".55"/>
+  <rect x="18" y="690" width="564" height="150" rx="4" class="g" opacity=".35"/>
+
+  <!-- highlights: number tags match the list under the picture -->
+  <rect class="box" x="186" y="84" width="108" height="42"/><g class="tag"><circle cx="186" cy="84" r="11"/></g><text class="tagt" x="186" y="89">1</text>
+  <rect class="box" x="296" y="84" width="108" height="42"/><g class="tag"><circle cx="404" cy="84" r="11"/></g><text class="tagt" x="404" y="89">2</text>
+  <rect class="box" x="276" y="130" width="70" height="42"/><g class="tag"><circle cx="346" cy="130" r="11"/></g><text class="tagt" x="346" y="135">3</text>
+  <rect class="box" x="252" y="309" width="64" height="53"/><g class="tag"><circle cx="316" cy="309" r="11"/></g><text class="tagt" x="316" y="314">4</text>
+  <rect class="box" x="404" y="452" width="178" height="52"/><g class="tag"><circle cx="582" cy="452" r="11"/></g><text class="tagt" x="582" y="457">5</text>
+  <rect class="box" x="328" y="333" width="252" height="28"/><g class="tag"><circle cx="580" cy="333" r="11"/></g><text class="tagt" x="580" y="338">6</text>
+  <rect class="box" x="18" y="530" width="200" height="26"/><g class="tag"><circle cx="218" cy="530" r="11"/></g><text class="tagt" x="218" y="535">7</text>
+  <rect class="box" x="18" y="504" width="200" height="26"/><g class="tag"><circle cx="18" cy="504" r="11"/></g><text class="tagt" x="18" y="509">8</text>
+  <rect class="box" x="328" y="200" width="252" height="64"/><g class="tag"><circle cx="328" cy="200" r="11"/></g><text class="tagt" x="328" y="205">9</text>
+</svg>

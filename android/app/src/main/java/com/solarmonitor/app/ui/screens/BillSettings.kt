@@ -97,6 +97,7 @@ fun BillSettingsCard(repo: Repository, saved: BillConfig?, toast: (String) -> Un
     }
 
     SectionCard("Bill (IESCO)", info = "Copy these from your latest IESCO bill; the estimate then follows the same steps as the bill. Saved on the monitor, so the web dashboard and other phones use the same values.") {
+        BillGuideButton()
         Text("Your status (printed on the bill)", style = MaterialTheme.typography.labelLarge)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 6.dp)) {
             listOf(true to "Protected", false to "Unprotected").forEachIndexed { i, (v, l) ->
@@ -151,6 +152,7 @@ private fun PastBills(bills: List<PastBill>, onChange: (List<PastBill>) -> Unit)
     var units by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     Text("Your bills", style = MaterialTheme.typography.titleSmall)
+    BillGuideButton()
     Text("Add units and amount from each bill (the table on the bill lists the last 12 months). Used for protected status and the fuel adjustment.",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
     ExposedDropdownMenuBox(open, { open = it }) {

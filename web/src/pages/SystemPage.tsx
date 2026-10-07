@@ -78,7 +78,7 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
       </div>
 
       <Card>
-        <CardHeader title="Monitor device" sub={info ? `firmware v${info.fw}` : 'not connected'} />
+        <CardHeader title="Monitor device" sub={`${info ? `firmware v${info.fw}` : 'not connected'} · web app v${__APP_VERSION__}`} />
         {info && (
           <div className="grid gap-x-8 sm:grid-cols-2">
             <div>

@@ -93,7 +93,7 @@ fun LiveScreen(repo: Repository, padding: PaddingValues, wide: Boolean) {
                     // offline: last values stay visible but faded and still, with a note on top
                     val fade = if (!offline) Modifier else Modifier.alpha(0.35f).then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(2.dp) else Modifier)
                     val cur = d
-                    if (s.fx3d && !offline && cur != null && cur.ok) EnergyCore3D(cur, rated?.outW?.takeIf { it > 0 } ?: 3200, Modifier.fillMaxWidth(0.42f).alpha(0.85f).then(fade))
+                    if (s.fx3d && !offline && cur != null && cur.ok) EnergyCore3D(cur, rated?.outW?.takeIf { it > 0 } ?: 3200, Modifier.fillMaxWidth(0.62f).alpha(0.8f).then(fade))
                     PowerFlow(d, rated?.outW?.takeIf { it > 0 } ?: 3200, Modifier.padding(vertical = 4.dp).then(fade), still = offline, idleW = idleW)
                     if (offline) OfflineBadge(stale!!, d!!.t)
                 }

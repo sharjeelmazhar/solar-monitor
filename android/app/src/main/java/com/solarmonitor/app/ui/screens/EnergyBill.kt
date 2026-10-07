@@ -42,6 +42,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import com.solarmonitor.app.data.BillCalc
 import com.solarmonitor.app.data.BillConfig
 import com.solarmonitor.app.data.DayRec
@@ -246,12 +248,15 @@ fun BillHistory(cfg: BillConfig) {
         Text("${hist.size} months from ${monthName(hist.first().month)} to ${monthName(hist.last().month)} · units per bill", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
         Spacer(Modifier.height(10.dp))
         val max = maxOf(limit * 1.15f, hist.maxOf { it.units }.toFloat())
-        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(150.dp)) {
+        var sel by rememberSaveable { mutableStateOf(-1) }
+        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(150.dp).pointerInput(hist.size) {
+            detectTapGestures { p -> val i = (p.x / (size.width.toFloat() / hist.size)).toInt().coerceIn(0, hist.size - 1); sel = if (sel == i) -1 else i }
+        }) {
             val w = size.width / hist.size
             hist.forEachIndexed { i, b ->
                 val h = size.height * b.units / max
                 val c = if (b.units > limit) e.crit else if (b.units >= limit - 25) e.warn else e.grid
-                drawRoundRect(c.copy(alpha = if (i == hist.size - 1) 1f else 0.8f), androidx.compose.ui.geometry.Offset(i * w + w * 0.15f, size.height - h),
+                drawRoundRect(c.copy(alpha = if (sel < 0) (if (i == hist.size - 1) 1f else 0.8f) else if (sel == i) 1f else 0.35f), androidx.compose.ui.geometry.Offset(i * w + w * 0.15f, size.height - h),
                     androidx.compose.ui.geometry.Size(w * 0.7f, h), androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()))
             }
             val y = size.height * (1 - limit / max)
@@ -265,7 +270,19 @@ fun BillHistory(cfg: BillConfig) {
                     textAlign = TextAlign.Center, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
             }
         }
-        Spacer(Modifier.height(12.dp))
+        hist.getOrNull(sel)?.let { b ->
+            val prev = hist.firstOrNull { it.month == b.month - 100 }
+            Column(Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh).padding(12.dp)) {
+                Text(monthName(b.month, "MMMM yyyy"), style = MaterialTheme.typography.titleSmall)
+                Text("${b.units} units" + (if (b.amount > 0) " · ${rs(b.amount.toDouble())} · Rs ${String.format(Locale.US, "%.1f", b.amount.toDouble() / b.units)}/unit" else ""),
+                    style = MaterialTheme.typography.bodyMedium.merge(NumberStyle), color = if (b.units > limit) e.crit else cs.onSurface)
+                Text((if (b.units > limit) "over the protected limit" else "${limit - b.units} units under $limit") +
+                    (prev?.let { " · ${if (b.units - it.units >= 0) "+" else ""}${b.units - it.units} units vs a year before" } ?: ""),
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            }
+        }
+        Text("Tap a bar to see that bill.", style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+        Spacer(Modifier.height(10.dp))
         BillCalc.insights(hist, limit).forEach { x ->
             Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
                 Box(Modifier.padding(top = 6.dp).size(10.dp).clip(CircleShape).background(when (x.tone) { "good" -> e.good; "warn" -> e.warn; "crit" -> e.crit; else -> cs.outline }))
