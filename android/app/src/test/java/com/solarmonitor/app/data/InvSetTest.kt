@@ -41,4 +41,23 @@ class InvSetTest {
         assertEquals("26.5 V", InvSet.label(InvSet.def("redischarge"), 26.5, r, chg, ac))
         assertNull(InvSet.choices(InvSet.def("bulk"), r.copy(battV = 36.0), chg, ac))
     }
+
+    private val beqi = "0 060 030 050 030 29.20 000 120 0 0000"   // real QBEQI from the Inverex Veyron
+
+    @Test fun equalizationReadFromQbeqi() {
+        assertEquals(60.0, InvSet.current(InvSet.def("eqTime"), r, "", beqi)!!, 1e-6)
+        assertEquals(29.2, InvSet.current(InvSet.def("eqVolt"), r, "", beqi)!!, 1e-6)
+        assertEquals(120.0, InvSet.current(InvSet.def("eqTimeout"), r, "", beqi)!!, 1e-6)
+        assertNull(InvSet.current(InvSet.def("eqTime"), r, "", ""))
+    }
+
+    @Test fun newRangesMatchFirmware() {
+        val t = values("eqTime"); assertEquals(5.0, t.first(), 1e-6); assertEquals(900.0, t.last(), 1e-6); assertEquals(180, t.size)
+        val v = values("eqVolt"); assertEquals(24.0, v.first(), 1e-6); assertEquals(30.5, v.last(), 1e-6)
+        assertEquals(listOf(0.0, 1.0, 2.0, 3.0), values("battType"))
+        assertEquals(listOf(220.0, 230.0, 240.0), values("outV"))
+        assertEquals(230.0, InvSet.current(InvSet.def("outV"), r, "")!!, 1e-6)
+        assertEquals("30 days", InvSet.label(InvSet.def("eqPeriod"), 30.0, r, chg, ac))
+        assertEquals(0.0, InvSet.current(InvSet.all.first { it.letter == 'd' }, r, "EakxyzDbdjuv")!!, 1e-6)
+    }
 }

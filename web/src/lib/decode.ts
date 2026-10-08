@@ -44,7 +44,7 @@ export const CHG_PRIO_HELP = [
   'Only solar charges the battery; the grid never does.',
 ]
 const FLAG_NAMES: Record<string, string> = {
-  a: 'Buzzer', b: 'Overload bypass', j: 'Power saving', k: 'LCD returns to home screen', u: 'Overload auto-restart',
+  a: 'Buzzer', b: 'Overload bypass', d: 'Solar feed to grid', j: 'Power saving', k: 'LCD returns to home screen', u: 'Overload auto-restart',
   v: 'Over-temp auto-restart', x: 'LCD backlight', y: 'Beep on grid loss', z: 'Fault code record',
 }
 

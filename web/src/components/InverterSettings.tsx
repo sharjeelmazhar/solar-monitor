@@ -1,9 +1,9 @@
-import { ArrowRight, Check, Copy, Lock, LockOpen, Minus, Pencil, Plus, Radar, RefreshCw, TriangleAlert, X } from 'lucide-react'
+import { ArrowRight, Check, Copy, Lock, LockOpen, Minus, Pencil, Plus, Radar, RefreshCw, RotateCcw, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { BATT_TYPES, parseFlags, parseRated, type Rated } from '../lib/decode'
 import { dayLabel, hhmm, ymd } from '../lib/format'
 import {
-  INV_SETTINGS, checkPassword, choicesOf, currentOf, fetchLog, labelOf, logLabel, readProbe, sendSetting, setId, startProbe,
+  INV_SETTINGS, RESTORE_CODE, RESTORE_WORD, checkPassword, choicesOf, currentOf, fetchLog, labelOf, logLabel, parseEq, readProbe, sendSetting, setId, startProbe,
   type Choice, type LogEntry, type SetDef,
 } from '../lib/invset'
 import { refreshInfo, refreshInverter, useStore } from '../lib/store'
@@ -43,6 +43,7 @@ export function InverterSettings() {
   const [editing, setEditing] = useState<SetDef | null>(null)
   const [probe, setProbe] = useState(false)
   const [logKey, setLogKey] = useState(0)
+  const [restore, setRestore] = useState(false)
 
   useEffect(() => {
     if (!edit) return
@@ -53,8 +54,10 @@ export function InverterSettings() {
   const chg = info?.inv.chgCur ?? ''
   const ac = info?.inv.acCur ?? ''
   const proto = info?.inv.proto
+  const beqi = info?.inv.beqi ?? ''
+  const eq = parseEq(beqi)
   const canEdit = edit && !!r && proto !== 'PI18'
-  const val = (d: SetDef) => (r ? labelOf(d, currentOf(d, r, info?.inv.qflag ?? ''), r, chg, ac) : '–')
+  const val = (d: SetDef) => (r ? labelOf(d, currentOf(d, r, info?.inv.qflag ?? '', beqi), r, chg, ac) : '–')
   const def = (key: string) => INV_SETTINGS.find((d) => d.key === key)!
   const row = (key: string, k: string, help?: string, v?: ReactNode) => {
     const d = def(key)
@@ -87,7 +90,8 @@ export function InverterSettings() {
             {row('outPrio', 'Output priority', choicesOf(def('outPrio'), r, chg, ac)?.[r.outPrio]?.help)}
             {row('chgPrio', 'Charger priority', choicesOf(def('chgPrio'), r, chg, ac)?.[r.chgPrio]?.help)}
             <Row k="Battery" v={`${r.battV} V · ${BATT_TYPES[r.battType] ?? 'type ' + r.battType}`}
-              help={r.battType === 2 ? 'User-defined type: the inverter estimates battery % from voltage, so it can read 100 % while discharging lightly.' : undefined} />
+              help={r.battType === 2 ? 'User-defined type: the inverter estimates battery % from voltage, so it can read 100 % while discharging lightly.' : undefined}
+              onEdit={canEdit ? () => setEditing(def('battType')) : undefined} />
             {canEdit ? <>
               {row('bulk', 'Bulk charge')}
               {row('float', 'Float charge')}
@@ -102,23 +106,43 @@ export function InverterSettings() {
               {row('maxAc', 'Max grid charge current')}
             </> : <Row k="Max charge current" v={`${r.maxChg} A (from grid ${r.maxAc} A)`} />}
             {row('range', 'AC input range', r.range === 1 ? 'Switches to battery quickly; protects computers.' : 'Tolerates wider grid voltage; fine for most homes.')}
+            {canEdit ? <>
+              {row('outV', 'Output voltage')}
+              {row('outHz', 'Output frequency')}
+            </> : <Row k="Output" v={`${r.outV} V · ${r.outHz} Hz`} />}
             <Row k="Rated power" v={`${r.outW} W / ${r.outVA} VA`} />
             {info?.inv.qid && <Row k="Serial number" v={info.inv.qid} />}
             {info?.inv.qvfw && <Row k="Inverter firmware" v={info.inv.qvfw.replace(/^VERFW:/, '')} />}
             {proto && <Row k="Protocol" v={proto} />}
             {!canEdit && flags && <Row k="Enabled features" v={flags.on.join(', ') || '–'} />}
             {canEdit && INV_SETTINGS.filter((d) => d.kind === 'flag').map((d) => <Row key={setId(d)} k={d.label} v={val(d)} onEdit={() => setEditing(d)} />)}
+            {eq && <>
+              <h3 className="mt-5 mb-1 text-sm font-semibold">Battery equalization</h3>
+              {canEdit ? <>
+                {row('eqEn', 'Equalization', 'For flooded lead-acid batteries only.')}
+                {eq[0] === 1 && row('eqNow', 'Equalize now')}
+                {row('eqVolt', 'Voltage')}
+                {row('eqTime', 'Time')}
+                {row('eqTimeout', 'Time-out')}
+                {row('eqPeriod', 'Every')}
+              </> : <>
+                <Row k="Equalization" v={eq[0] === 1 ? (eq[8] === 1 ? 'On · running now' : 'On') : 'Off'} help="A regular higher charge for flooded lead-acid batteries." />
+                <Row k="Voltage · time · every" v={`${eq[5].toFixed(2)} V · ${eq[1]} min · ${eq[2]} days`} help={`Gives up after ${eq[7]} min if the voltage is not reached.`} />
+              </>}
+            </>}
           </div>
         )}
         {edit && (
           <div className="mt-4 flex flex-wrap gap-2">
             <Button onClick={() => setProbe(true)}><Radar size={16} /> Detect inverter (read-only probe)</Button>
+            {canEdit && <Button className="border-crit/50 text-crit" onClick={() => setRestore(true)}><RotateCcw size={16} /> Restore factory defaults</Button>}
           </div>
         )}
       </Card>
       <ChangeLog key={logKey} />
       <UnlockDialog open={unlock} onClose={() => setUnlock(false)} onUnlocked={(pw) => { editPw = pw; editUntil = Date.now() + EDIT_MS; setEdit(true); setUnlock(false) }} />
-      {editing && r && <ChangeDialog d={editing} r={r} chg={chg} ac={ac} qflag={info?.inv.qflag ?? ''} onClose={() => { setEditing(null); setLogKey((x) => x + 1) }} />}
+      {restore && <RestoreDialog onClose={() => { setRestore(false); setLogKey((x) => x + 1) }} />}
+      {editing && r && <ChangeDialog d={editing} r={r} chg={chg} ac={ac} qflag={info?.inv.qflag ?? ''} beqi={beqi} onClose={() => { setEditing(null); setLogKey((x) => x + 1) }} />}
       <ProbeDialog open={probe} onClose={() => setProbe(false)} />
     </>
   )
@@ -166,9 +190,10 @@ function UnlockDialog({ open, onClose, onUnlocked }: { open: boolean; onClose: (
   )
 }
 
-function ChangeDialog({ d, r, chg, ac, qflag, onClose }: { d: SetDef; r: Rated; chg: string; ac: string; qflag: string; onClose: () => void }) {
+function ChangeDialog({ d, r, chg, ac, qflag, beqi, onClose }: { d: SetDef; r: Rated; chg: string; ac: string; qflag: string; beqi: string; onClose: () => void }) {
   const choices = choicesOf(d, r, chg, ac) ?? []
-  const cur = currentOf(d, r, qflag)
+  const cur = currentOf(d, r, qflag, beqi)
+  const stepped = d.kind === 'volts' || d.kind === 'steps'
   const [pick, setPick] = useState<number | null>(cur ?? choices[0]?.value ?? null)
   const [step, setStep] = useState<'pick' | 'confirm' | 'sending' | 'done'>('pick')
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null)
@@ -184,8 +209,8 @@ function ChangeDialog({ d, r, chg, ac, qflag, onClose }: { d: SetDef; r: Rated; 
             <span className="text-text-2">Now</span><span className="num font-medium">{label(cur)}</span>
           </div>
           {choices.length === 0 && <p className="text-sm text-crit">The allowed values have not been read from the inverter yet. Press refresh and try again.</p>}
-          {d.kind === 'volts' && choices.length > 0 && <VoltPicker choices={choices} value={pick} onChange={setPick} />}
-          {d.kind !== 'volts' && choices.length > 0 && (
+          {stepped && choices.length > 0 && <VoltPicker choices={choices} value={pick} onChange={setPick} full={d.key === 'redischarge'} />}
+          {!stepped && choices.length > 0 && (
             <div className="grid gap-2" role="radiogroup" aria-label={d.label}>
               {choices.map((c) => (
                 <button key={c.value} role="radio" aria-checked={pick === c.value} onClick={() => setPick(c.value)}
@@ -228,11 +253,11 @@ function ChangeDialog({ d, r, chg, ac, qflag, onClose }: { d: SetDef; r: Rated; 
   )
 }
 
-function VoltPicker({ choices, value, onChange }: { choices: Choice[]; value: number | null; onChange: (v: number) => void }) {
-  const volts = choices.filter((c) => c.value > 0)
-  const hasFull = choices.some((c) => c.value === 0)
+/** Stepper + slider over an ordered list (voltages, minutes, days). full = the list has a "Full battery" choice (0). */
+function VoltPicker({ choices, value, onChange, full: hasFull = false }: { choices: Choice[]; value: number | null; onChange: (v: number) => void; full?: boolean }) {
+  const volts = hasFull ? choices.filter((c) => c.value > 0) : choices
   let i = volts.findIndex((c) => value != null && Math.abs(c.value - value) < 0.001)
-  const full = value === 0
+  const full = hasFull && value === 0
   if (i < 0 && !full) i = 0
   const move = (dir: number) => onChange(volts[Math.max(0, Math.min(volts.length - 1, (i < 0 ? 0 : i) + dir))].value)
   return (
@@ -249,10 +274,47 @@ function VoltPicker({ choices, value, onChange }: { choices: Choice[]; value: nu
           <div className="num flex-1 text-center text-2xl font-semibold">{volts[i].label}</div>
           <IconButton label="Higher" onClick={() => move(1)} disabled={i >= volts.length - 1}><Plus size={16} /></IconButton>
         </div>
-        <input type="range" min={0} max={volts.length - 1} value={i} onChange={(e) => onChange(volts[+e.target.value].value)} className="accent-[var(--load)]" aria-label="Voltage" />
+        <input type="range" min={0} max={volts.length - 1} value={i} onChange={(e) => onChange(volts[+e.target.value].value)} className="accent-[var(--load)]" aria-label="Value" />
         <div className="flex justify-between text-xs text-text-3"><span>{volts[0].label}</span><span>allowed range</span><span>{volts[volts.length - 1].label}</span></div>
       </>}
     </div>
+  )
+}
+
+function RestoreDialog({ onClose }: { onClose: () => void }) {
+  const [word, setWord] = useState('')
+  const [step, setStep] = useState<'ask' | 'sending' | 'done'>('ask')
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const d = INV_SETTINGS.find((x) => x.key === 'restore')!
+  return (
+    <Modal open onOpenChange={(o) => !o && step !== 'sending' && onClose()} title="Restore factory defaults">
+      <div className="grid gap-4">
+        {step === 'ask' && <>
+          <Warning>
+            Every inverter setting goes back to the factory values: battery type and voltages, charge currents, priorities and
+            all switches. If your battery needs other values, the inverter may charge it wrongly until you set them again.
+            Note the current settings first.
+          </Warning>
+          <label className="grid gap-1 text-xs text-text-2"><span>Type <b className="num text-text">{RESTORE_WORD}</b> to confirm</span>
+            <input autoFocus value={word} onChange={(e) => setWord(e.target.value.toUpperCase())} autoComplete="off" spellCheck={false}
+              className="focus-ring num min-h-11 w-full rounded-2xl border border-border bg-surface-2 px-3 text-sm tracking-widest" />
+          </label>
+          <div className="flex gap-2">
+            <Button variant="primary" className="bg-crit text-white" disabled={word !== RESTORE_WORD}
+              onClick={async () => { setStep('sending'); setResult(await sendSetting(d, RESTORE_CODE, editPw)); setStep('done') }}>Restore defaults</Button>
+            <Button onClick={onClose}>Cancel</Button>
+          </div>
+        </>}
+        {step === 'sending' && <div className="flex items-center gap-3 rounded-2xl bg-surface-2 p-4 text-sm"><RefreshCw size={18} className="animate-spin" /> Sending…</div>}
+        {step === 'done' && result && <>
+          <div className={cn('flex gap-3 rounded-2xl p-4 text-sm', result.ok ? 'bg-good/15' : 'bg-crit/15')}>
+            {result.ok ? <Check size={18} className="shrink-0 text-good" /> : <X size={18} className="shrink-0 text-crit" />}
+            <div><div className="font-medium">{result.ok ? 'Defaults restored' : 'Not changed'}</div><div className="mt-0.5 text-text-2">{result.msg}</div></div>
+          </div>
+          <div><Button variant="primary" onClick={onClose}>Done</Button></div>
+        </>}
+      </div>
+    </Modal>
   )
 }
 

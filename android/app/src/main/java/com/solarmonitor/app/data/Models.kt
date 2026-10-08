@@ -76,7 +76,7 @@ data class Info(
     val clients: Int, val histFrom: Int, val battAh: Double, val tariff: Double,
     val cycDay: Int, val cycHour: Int,   // -1 on firmware without the billing counter
     val qpiri: String, val qid: String, val qvfw: String, val qflag: String,
-    val proto: String = "", val chgCur: String = "", val acCur: String = "",
+    val proto: String = "", val chgCur: String = "", val acCur: String = "", val beqi: String = "",
 ) {
     val rated: Rated? get() = Rated.parse(qpiri)
 
@@ -93,6 +93,7 @@ data class Info(
                 cycDay = j.optInt("cycDay", -1), cycHour = j.optInt("cycHour", -1),
                 qpiri = inv.optString("qpiri"), qid = inv.optString("qid"), qvfw = inv.optString("qvfw"), qflag = inv.optString("qflag"),
                 proto = inv.optString("proto"), chgCur = inv.optString("chgCur"), acCur = inv.optString("acCur"),
+                beqi = inv.optString("beqi"),
             )
         }
     }
@@ -102,6 +103,7 @@ data class Info(
 data class Rated(
     val outVA: Int, val outW: Int, val battV: Double, val recharge: Double, val cutoff: Double, val bulk: Double, val float: Double,
     val battType: Int, val maxAc: Int, val maxChg: Int, val range: Int, val outPrio: Int, val chgPrio: Int, val redischarge: Double?,
+    val outV: Int = 0, val outHz: Int = 0,
 ) {
     companion object {
         fun parse(q: String): Rated? {
@@ -110,7 +112,7 @@ data class Rated(
             fun d(i: Int) = f[i].toDoubleOrNull() ?: 0.0
             fun n(i: Int) = f[i].toDoubleOrNull()?.toInt() ?: 0
             return Rated(n(5), n(6), d(7), d(8), d(9), d(10), d(11), n(12), n(13), n(14), n(15), n(16), n(17),
-                if (f.size > 22) f[22].toDoubleOrNull() else null)
+                if (f.size > 22) f[22].toDoubleOrNull() else null, n(2), n(3))
         }
     }
 }
@@ -215,7 +217,7 @@ object Decode {
         "Only solar charges the battery; the grid never does.",
     )
     private val flagNames = mapOf(
-        'a' to "Buzzer", 'b' to "Overload bypass", 'j' to "Power saving", 'k' to "LCD back to home screen",
+        'a' to "Buzzer", 'b' to "Overload bypass", 'd' to "Solar feed to grid", 'j' to "Power saving", 'k' to "LCD back to home screen",
         'u' to "Overload auto-restart", 'v' to "Over-temp auto-restart", 'x' to "LCD backlight", 'y' to "Beep on grid loss", 'z' to "Fault code record",
     )
 

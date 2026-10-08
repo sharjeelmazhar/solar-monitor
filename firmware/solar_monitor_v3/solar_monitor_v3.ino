@@ -80,6 +80,7 @@ uint32_t histFrom = 0;   // oldest day with minute data
 // inverter info, refreshed rarely
 char qpiri[160] = "", qid[40] = "", qvfw[40] = "", qflag[40] = "";
 char chgCur[64] = "", acCur[64] = "";   // allowed max charge currents (QMCHGCR / QMUCHGCR)
+char qbeqi[64] = "";                    // battery equalization settings (QBEQI)
 
 // a settings change waiting for the loop task: state 0 none, 1 waiting, 2 done ok, 3 failed
 struct SetJob {
@@ -215,11 +216,11 @@ static void buildLiveJsonLocked() {
 }
 
 static String buildInfoJson() {
-  char a[160], b[40], c[40], d[40], name[40], tz[40], ssid[40], m1[64], m2[64];
+  char a[160], b[40], c[40], d[40], name[40], tz[40], ssid[40], m1[64], m2[64], eq[64];
   lock();
   jsonSafe(a, qpiri, sizeof(a)); jsonSafe(b, qid, sizeof(b));
   jsonSafe(c, qvfw, sizeof(c));  jsonSafe(d, qflag, sizeof(d));
-  jsonSafe(m1, chgCur, sizeof(m1)); jsonSafe(m2, acCur, sizeof(m2));
+  jsonSafe(m1, chgCur, sizeof(m1)); jsonSafe(m2, acCur, sizeof(m2)); jsonSafe(eq, qbeqi, sizeof(eq));
   jsonSafe(name, setName.c_str(), sizeof(name)); jsonSafe(tz, setTz.c_str(), sizeof(tz));
   uint32_t from = histFrom;
   unlock();
@@ -230,13 +231,13 @@ static String buildInfoJson() {
     "\"ap\":%s,\"uptime\":%lu,\"heap\":%lu,\"minHeap\":%lu,\"fsUsed\":%lu,\"fsTotal\":%lu,\"fsOk\":%s,"
     "\"timeOk\":%s,\"time\":%lu,\"tz\":\"%s\",\"clients\":%u,\"histFrom\":%lu,"
     "\"battAh\":%.1f,\"tariff\":%.2f,\"cycDay\":%d,\"cycHour\":%d,\"reset\":%d,"
-    "\"inv\":{\"proto\":\"%s\",\"qpiri\":\"%s\",\"qid\":\"%s\",\"qvfw\":\"%s\",\"qflag\":\"%s\",\"chgCur\":\"%s\",\"acCur\":\"%s\"}}",
+    "\"inv\":{\"proto\":\"%s\",\"qpiri\":\"%s\",\"qid\":\"%s\",\"qvfw\":\"%s\",\"qflag\":\"%s\",\"chgCur\":\"%s\",\"acCur\":\"%s\",\"beqi\":\"%s\"}}",
     FW_VERSION, HIST_VERSION, name, HOSTNAME, WiFi.localIP().toString().c_str(), WiFi.macAddress().c_str(), ssid,
     WiFi.RSSI(), apOn ? "true" : "false", (unsigned long)(millis() / 1000), (unsigned long)ESP.getFreeHeap(),
     (unsigned long)ESP.getMinFreeHeap(), fsOk ? (unsigned long)LittleFS.usedBytes() : 0UL,
     fsOk ? (unsigned long)LittleFS.totalBytes() : 0UL, fsOk ? "true" : "false",
     timeValid() ? "true" : "false", (unsigned long)time(nullptr), tz, (unsigned)events.count(), (unsigned long)from,
-    setBattAh, setTariff, setCycDay, setCycHour, (int)esp_reset_reason(), protoName(invProto), a, b, c, d, m1, m2);
+    setBattAh, setTariff, setCycDay, setCycHour, (int)esp_reset_reason(), protoName(invProto), a, b, c, d, m1, m2, eq);
   return String(buf);
 }
 
@@ -463,13 +464,14 @@ static uint32_t fnv(const char* s, uint32_t h = 2166136261u) {
 
 // Ratings and settings (PI30). Also the allowed charge currents, so settings changes can be checked.
 static bool readRated() {
-  char r[160], a[40], b[40], c[40], m1[64], m2[64];
+  char r[160], a[40], b[40], c[40], m1[64], m2[64], eq[64];
   bool got = invQuery("QPIRI", r, sizeof(r)) > 0;
   bool gotId = invQuery("QID", a, sizeof(a), 800) > 0;
   bool gotFw = invQuery("QVFW", b, sizeof(b), 800) > 0;
   bool gotFl = invQuery("QFLAG", c, sizeof(c), 800) > 0;
   bool gotM1 = invQuery("QMCHGCR", m1, sizeof(m1), 800) > 0;
   bool gotM2 = invQuery("QMUCHGCR", m2, sizeof(m2), 800) > 0;
+  bool gotEq = invQuery("QBEQI", eq, sizeof(eq), 800) > 0;
   lock();
   if (got) strlcpy(qpiri, r, sizeof(qpiri));
   if (gotId) strlcpy(qid, a, sizeof(qid));
@@ -477,6 +479,7 @@ static bool readRated() {
   if (gotFl) strlcpy(qflag, c, sizeof(qflag));
   if (gotM1) strlcpy(chgCur, m1, sizeof(chgCur));
   if (gotM2) strlcpy(acCur, m2, sizeof(acCur));
+  if (gotEq) strlcpy(qbeqi, eq, sizeof(qbeqi));
   unlock();
   return got;
 }
@@ -499,14 +502,15 @@ static void appendSetLog(const char* line) {
 static void runSetJob() {
   SetJob j;
   lock(); j = setJob; unlock();
-  char cmd[24], err[64], q[160], cl[64], al[64], fl[40];
-  lock(); strlcpy(q, qpiri, sizeof q); strlcpy(cl, chgCur, sizeof cl); strlcpy(al, acCur, sizeof al); strlcpy(fl, qflag, sizeof fl); unlock();
+  char cmd[24], err[64], q[160], cl[64], al[64], fl[40], eq[64];
+  lock(); strlcpy(q, qpiri, sizeof q); strlcpy(cl, chgCur, sizeof cl); strlcpy(al, acCur, sizeof al); strlcpy(fl, qflag, sizeof fl); strlcpy(eq, qbeqi, sizeof eq); unlock();
   const char* state = "failed";
   char msg[96] = "";
   char oldV[16] = "";
   int field = setKeyField(j.key);
-  if (field >= 0) { float o = qpiriField(q, field); snprintf(oldV, sizeof oldV, "%g", o); }
-  else if (field == -1) { const char* d = strchr(fl, 'D'); const char* l = strchr(fl, j.letter); snprintf(oldV, sizeof oldV, "%s", !d || !l ? "?" : l < d ? "on" : "off"); }
+  if (field >= EQ_BASE) { float o = qpiriField(eq, field - EQ_BASE); snprintf(oldV, sizeof oldV, "%g", o); }
+  else if (field >= 0) { float o = qpiriField(q, field); snprintf(oldV, sizeof oldV, "%g", o); }
+  else if (field == KEY_FLAG) { const char* d = strchr(fl, 'D'); const char* l = strchr(fl, j.letter); snprintf(oldV, sizeof oldV, "%s", !d || !l ? "?" : l < d ? "on" : "off"); }
   if (invProto != PROTO_PI30) {
     snprintf(msg, sizeof msg, "changing settings is only supported on PI30 inverters");
   } else if (!buildSetCommand(j.key, j.value, j.letter, q, cl, al, cmd, sizeof cmd, err, sizeof err)) {
@@ -519,15 +523,17 @@ static void runSetJob() {
     else {
       delay(300);
       readRated();
-      lock(); strlcpy(q, qpiri, sizeof q); strlcpy(fl, qflag, sizeof fl); unlock();
-      if (setVerified(j.key, j.value, j.letter, q, fl)) { state = "ok"; snprintf(msg, sizeof msg, "saved and read back"); }
+      lock(); strlcpy(q, qpiri, sizeof q); strlcpy(fl, qflag, sizeof fl); strlcpy(eq, qbeqi, sizeof eq); unlock();
+      if (setVerified(j.key, j.value, j.letter, q, fl, eq)) { state = "ok"; snprintf(msg, sizeof msg, "saved and read back"); }
       else snprintf(msg, sizeof msg, "inverter said OK but still shows the old value");
     }
   }
   char newV[16];
-  if (field == -1) snprintf(newV, sizeof newV, "%s", j.value == 1 ? "on" : "off"); else snprintf(newV, sizeof newV, "%g", j.value);
+  if (field == KEY_FLAG) snprintf(newV, sizeof newV, "%s", j.value == 1 ? "on" : "off");
+  else if (field == KEY_RESTORE) snprintf(newV, sizeof newV, "defaults");
+  else snprintf(newV, sizeof newV, "%g", j.value);
   char key[16];
-  if (field == -1) snprintf(key, sizeof key, "flag:%c", j.letter); else snprintf(key, sizeof key, "%s", j.key);
+  if (field == KEY_FLAG) snprintf(key, sizeof key, "flag:%c", j.letter); else snprintf(key, sizeof key, "%s", j.key);
   char line[260];
   snprintf(line, sizeof line, "{\"t\":%lu,\"by\":\"%s\",\"k\":\"%s\",\"o\":\"%s\",\"n\":\"%s\",\"r\":\"%s\",\"m\":\"%s\"}",
            (unsigned long)time(nullptr), j.by, key, oldV, newV, state, msg);
@@ -609,7 +615,7 @@ static void pollInverter() {
       Serial.printf("Inverter speaks %s\n", protoName(invProto));
       refreshRated = true;
       if (invProto != lastProto) {   // another inverter: forget the old one's settings
-        lock(); qpiri[0] = qid[0] = qvfw[0] = qflag[0] = chgCur[0] = acCur[0] = 0; unlock();
+        lock(); qpiri[0] = qid[0] = qvfw[0] = qflag[0] = chgCur[0] = acCur[0] = qbeqi[0] = 0; unlock();
         lastProto = invProto;
       }
     }
@@ -1114,8 +1120,8 @@ static void setupWeb() {
   server.on("/raw", HTTP_GET, [](AsyncWebServerRequest* r) {
     char b[600];
     lock();
-    snprintf(b, sizeof(b), "Protocol: %s\nQPIRI: %s\nQID: %s\nQVFW: %s\nQFLAG: %s\nQMCHGCR: %s\nQMUCHGCR: %s\nlast error: %s\n",
-             protoName(invProto), qpiri, qid, qvfw, qflag, chgCur, acCur, invErr);
+    snprintf(b, sizeof(b), "Protocol: %s\nQPIRI: %s\nQID: %s\nQVFW: %s\nQFLAG: %s\nQMCHGCR: %s\nQMUCHGCR: %s\nQBEQI: %s\nlast error: %s\n",
+             protoName(invProto), qpiri, qid, qvfw, qflag, chgCur, acCur, qbeqi, invErr);
     unlock();
     r->send(200, "text/plain", b);
   });

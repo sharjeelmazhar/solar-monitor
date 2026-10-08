@@ -35,9 +35,12 @@ import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -60,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -126,6 +130,7 @@ fun InverterSettingsCard(repo: Repository) {
     var editing by remember { mutableStateOf<SetDef?>(null) }
     var probe by remember { mutableStateOf(false) }
     var logKey by remember { mutableIntStateOf(0) }
+    var restore by remember { mutableStateOf(false) }
 
     LaunchedEffect(edit) {
         if (edit) { delay((EditMode.until - System.currentTimeMillis()).coerceAtLeast(0)); edit = false; EditMode.pw = ""; EditMode.until = 0 }
@@ -135,8 +140,10 @@ fun InverterSettingsCard(repo: Repository) {
     val r = i?.rated
     val chg = i?.chgCur ?: ""
     val ac = i?.acCur ?: ""
+    val beqi = i?.beqi ?: ""
+    val eq = InvSet.parseEq(beqi)
     val canEdit = edit && r != null && i.proto != "PI18"
-    fun v(d: SetDef) = if (r == null) "–" else InvSet.label(d, InvSet.current(d, r, i.qflag), r, chg, ac)
+    fun v(d: SetDef) = if (r == null) "–" else InvSet.label(d, InvSet.current(d, r, i.qflag, beqi), r, chg, ac)
     fun ed(key: String): (() -> Unit)? = if (canEdit) ({ editing = InvSet.def(key) }) else null
 
     SectionCard("Inverter settings", action = {
@@ -160,7 +167,7 @@ fun InverterSettingsCard(repo: Repository) {
             SetRow("Output priority", v(InvSet.def("outPrio")), Decode.outPrioHelp.getOrNull(r.outPrio), ed("outPrio"), first = true)
             SetRow("Charger priority", v(InvSet.def("chgPrio")), Decode.chgPrioHelp.getOrNull(r.chgPrio), ed("chgPrio"))
             SetRow("Battery", "${r.battV.fmt1()} V · ${Decode.battTypes.getOrElse(r.battType) { "type ${r.battType}" }}",
-                if (r.battType == 2) "User-defined type: the inverter estimates battery % from voltage, so it can read 100 % while discharging lightly." else null)
+                if (r.battType == 2) "User-defined type: the inverter estimates battery % from voltage, so it can read 100 % while discharging lightly." else null, ed("battType"))
             if (canEdit) {
                 SetRow("Bulk charge", v(InvSet.def("bulk")), onEdit = ed("bulk"))
                 SetRow("Float charge", v(InvSet.def("float")), onEdit = ed("float"))
@@ -178,16 +185,39 @@ fun InverterSettingsCard(repo: Repository) {
             } else SetRow("Max charge current", "${r.maxChg} A (from grid ${r.maxAc} A)")
             SetRow("AC input range", v(InvSet.def("range")),
                 if (r.range == 1) "Switches to battery quickly; protects computers." else "Tolerates wider grid voltage; fine for most homes.", ed("range"))
+            if (canEdit) {
+                SetRow("Output voltage", v(InvSet.def("outV")), onEdit = ed("outV"))
+                SetRow("Output frequency", v(InvSet.def("outHz")), onEdit = ed("outHz"))
+            } else SetRow("Output", "${r.outV} V · ${r.outHz} Hz")
             SetRow("Rated power", "${r.outW} W / ${r.outVA} VA")
             if (i.qid.isNotEmpty()) SetRow("Serial number", i.qid)
             if (i.qvfw.isNotEmpty()) SetRow("Inverter firmware", i.qvfw.removePrefix("VERFW:"))
             if (i.proto.isNotEmpty()) SetRow("Protocol", i.proto)
             if (!canEdit) Decode.enabledFlags(i.qflag)?.let { SetRow("Enabled features", it) }
             if (canEdit) InvSet.all.filter { it.kind == SetKind.Flag }.forEach { d -> SetRow(d.label, v(d), onEdit = { editing = d }) }
+            if (eq != null) {
+                Text("Battery equalization", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 18.dp, bottom = 2.dp))
+                if (canEdit) {
+                    SetRow("Equalization", v(InvSet.def("eqEn")), "For flooded lead-acid batteries only.", ed("eqEn"), first = true)
+                    if (eq[0] == 1.0) SetRow("Equalize now", v(InvSet.def("eqNow")), onEdit = ed("eqNow"))
+                    SetRow("Voltage", v(InvSet.def("eqVolt")), onEdit = ed("eqVolt"))
+                    SetRow("Time", v(InvSet.def("eqTime")), onEdit = ed("eqTime"))
+                    SetRow("Time-out", v(InvSet.def("eqTimeout")), onEdit = ed("eqTimeout"))
+                    SetRow("Every", v(InvSet.def("eqPeriod")), onEdit = ed("eqPeriod"))
+                } else {
+                    SetRow("Equalization", if (eq[0] == 1.0) (if (eq[8] == 1.0) "On · running now" else "On") else "Off",
+                        "A regular higher charge for flooded lead-acid batteries.", first = true)
+                    SetRow("Voltage · time · every", "%.2f V · %d min · %d days".format(eq[5], eq[1].toInt(), eq[2].toInt()),
+                        "Gives up after ${eq[7].toInt()} min if the voltage is not reached.")
+                }
+            }
         }
         if (edit) {
             Spacer(Modifier.size(12.dp))
             FilledTonalButton(onClick = { probe = true }) { Icon(Icons.Rounded.Radar, null, Modifier.size(18.dp)); Text("  Detect inverter (read-only probe)") }
+            if (canEdit) OutlinedButton(onClick = { restore = true }, modifier = Modifier.padding(top = 8.dp), border = BorderStroke(1.dp, e.crit.copy(alpha = 0.5f))) {
+                Icon(Icons.Rounded.RestartAlt, null, Modifier.size(18.dp), tint = e.crit); Text("  Restore factory defaults", color = e.crit)
+            }
         }
     }
 
@@ -195,7 +225,8 @@ fun InverterSettingsCard(repo: Repository) {
         EditMode.pw = pw; EditMode.until = System.currentTimeMillis() + EDIT_MS; edit = true; unlock = false
     }
     val ed = editing
-    if (ed != null && r != null && i != null) ChangeDialog(repo, ed, r, chg, ac, i.qflag) { editing = null; logKey++ }
+    if (ed != null && r != null && i != null) ChangeDialog(repo, ed, r, chg, ac, i.qflag, beqi) { editing = null; logKey++ }
+    if (restore) RestoreDialog(repo) { restore = false; logKey++ }
     if (probe) ProbeDialog(repo) { probe = false }
     // the change log sits right under this card (same as the web)
     ChangeLog(repo, logKey)
@@ -249,9 +280,9 @@ private fun UnlockDialog(repo: Repository, onClose: () -> Unit, onUnlocked: (Str
 }
 
 @Composable
-private fun ChangeDialog(repo: Repository, d: SetDef, r: Rated, chg: String, ac: String, qflag: String, onClose: () -> Unit) {
+private fun ChangeDialog(repo: Repository, d: SetDef, r: Rated, chg: String, ac: String, qflag: String, beqi: String, onClose: () -> Unit) {
     val choices = remember(d, r, chg, ac) { InvSet.choices(d, r, chg, ac) ?: emptyList() }
-    val cur = InvSet.current(d, r, qflag)
+    val cur = InvSet.current(d, r, qflag, beqi)
     var pick by remember { mutableStateOf(cur ?: choices.firstOrNull()?.value) }
     var step by remember { mutableStateOf("pick") }
     var result by remember { mutableStateOf<SetResult?>(null) }
@@ -273,7 +304,7 @@ private fun ChangeDialog(repo: Repository, d: SetDef, r: Rated, chg: String, ac:
                             Text(label(cur), style = MaterialTheme.typography.bodyMedium.merge(NumberStyle), fontWeight = FontWeight.Medium)
                         }
                         if (choices.isEmpty()) Text("The allowed values have not been read from the inverter yet. Press refresh and try again.", color = e.crit)
-                        else if (d.kind == SetKind.Volts) VoltPicker(choices, pick) { pick = it }
+                        else if (d.kind == SetKind.Volts || d.kind == SetKind.Steps) VoltPicker(choices, pick, d.key == "redischarge") { pick = it }
                         else choices.forEach { c ->
                             val on = pick != null && abs(pick!! - c.value) < 0.001
                             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
@@ -340,10 +371,10 @@ private fun ChangeDialog(repo: Repository, d: SetDef, r: Rated, chg: String, ac:
 }
 
 @Composable
-private fun VoltPicker(choices: List<Choice>, value: Double?, onChange: (Double) -> Unit) {
-    val volts = choices.filter { it.value > 0 }
-    val hasFull = choices.any { it.value == 0.0 }
-    val full = value == 0.0
+/** Stepper + slider over an ordered list (voltages, minutes, days). hasFull = the list has a "Full battery" choice (0). */
+private fun VoltPicker(choices: List<Choice>, value: Double?, hasFull: Boolean, onChange: (Double) -> Unit) {
+    val volts = if (hasFull) choices.filter { it.value > 0 } else choices
+    val full = hasFull && value == 0.0
     var i = volts.indexOfFirst { value != null && abs(it.value - value) < 0.001 }
     if (i < 0) i = 0
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -366,6 +397,54 @@ private fun VoltPicker(choices: List<Choice>, value: Double?, onChange: (Double)
             }
         }
     }
+}
+
+@Composable
+private fun RestoreDialog(repo: Repository, onClose: () -> Unit) {
+    var word by remember { mutableStateOf("") }
+    var step by remember { mutableStateOf("ask") }
+    var result by remember { mutableStateOf<SetResult?>(null) }
+    val scope = rememberCoroutineScope()
+    val e = LocalEnergy.current
+    AlertDialog(
+        onDismissRequest = { if (step != "sending") onClose() },
+        title = { Text("Restore factory defaults") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                when (step) {
+                    "ask" -> {
+                        Warning("Every inverter setting goes back to the factory values: battery type and voltages, charge currents, priorities and " +
+                            "all switches. If your battery needs other values, the inverter may charge it wrongly until you set them again. Note the current settings first.")
+                        OutlinedTextField(word, { word = it.uppercase().take(10) }, label = { Text("Type ${InvSet.RESTORE_WORD} to confirm") }, singleLine = true,
+                            textStyle = NumberStyle, modifier = Modifier.fillMaxWidth())
+                    }
+                    "sending" -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)); Text("Sending…")
+                    }
+                    else -> result?.let { res ->
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background((if (res.ok) e.good else e.crit).copy(alpha = 0.15f)).padding(16.dp)) {
+                            Icon(if (res.ok) Icons.Rounded.Check else Icons.Rounded.Close, null, tint = if (res.ok) e.good else e.crit)
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text(if (res.ok) "Defaults restored" else "Not changed", fontWeight = FontWeight.Medium)
+                                Text(res.msg, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            when (step) {
+                "ask" -> Button(enabled = word == InvSet.RESTORE_WORD, colors = ButtonDefaults.buttonColors(containerColor = e.crit, contentColor = Color.White), onClick = {
+                    step = "sending"
+                    scope.launch { result = InvSet.send(repo.api, InvSet.def("restore"), InvSet.RESTORE_CODE.toDouble(), EditMode.pw); repo.refreshInfo(); step = "done" }
+                }) { Text("Restore defaults") }
+                "done" -> Button(onClick = onClose) { Text("Done") }
+            }
+        },
+        dismissButton = { if (step == "ask") TextButton(onClick = onClose) { Text("Cancel") } },
+    )
 }
 
 @Composable

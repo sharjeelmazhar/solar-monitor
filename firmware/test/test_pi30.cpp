@@ -214,7 +214,29 @@ static void testSetCommands() {
   CHECK(setCmd("flag", 1, 'a') == "PEa");
   CHECK(setCmd("flag", 0, 'x') == "PDx");
   CHECK(isErr(setCmd("flag", 1, 'q')));
-  CHECK(isErr(setCmd("battType", 1)));
+  CHECK(setCmd("battType", 1) == "PBT01");
+  CHECK(setCmd("battType", 3) == "PBT03");
+  CHECK(isErr(setCmd("battType", 4)));       // lithium codes differ per model: not offered
+  CHECK(setCmd("outV", 240) == "V240");
+  CHECK(isErr(setCmd("outV", 235)));
+  CHECK(setCmd("outHz", 60) == "F60");
+  CHECK(isErr(setCmd("outHz", 55)));
+  CHECK(setCmd("flag", 1, 'd') == "PEd");    // solar feed to grid
+  CHECK(setCmd("eqEn", 1) == "PBEQE1");
+  CHECK(setCmd("eqNow", 0) == "PBEQA0");
+  CHECK(setCmd("eqTime", 60) == "PBEQT060");
+  CHECK(setCmd("eqTime", 900) == "PBEQT900");
+  CHECK(isErr(setCmd("eqTime", 62)));
+  CHECK(isErr(setCmd("eqTime", 0)));
+  CHECK(setCmd("eqTimeout", 120) == "PBEQOT120");
+  CHECK(isErr(setCmd("eqTimeout", 905)));
+  CHECK(setCmd("eqPeriod", 30) == "PBEQP030");
+  CHECK(isErr(setCmd("eqPeriod", 91)));
+  CHECK(setCmd("eqVolt", 29.2f) == "PBEQV29.20");
+  CHECK(isErr(setCmd("eqVolt", 30.6f)));      // above 30.5 for 24 V
+  CHECK(isErr(setCmd("eqVolt", 29.25f)));     // 0.1 V steps on 24 V
+  CHECK(setCmd("restore", RESTORE_CODE) == "PF");
+  CHECK(isErr(setCmd("restore", 1)));         // a reset must carry the confirm code
   char cmd[24], err[64];
   CHECK(!buildSetCommand("bulk", 28.0f, 0, "", "", "", cmd, sizeof cmd, err, sizeof err));   // nothing read yet
   // 48 V inverter: ranges scale
@@ -233,6 +255,18 @@ static void testSetVerify() {
   CHECK(setVerified("flag", 1, 'a', REAL_QPIRI, "EakxyzDbdjuv"));
   CHECK(setVerified("flag", 0, 'u', REAL_QPIRI, "EakxyzDbdjuv"));
   CHECK(!setVerified("flag", 1, 'u', REAL_QPIRI, "EakxyzDbdjuv"));
+  const char* beqi = "0 060 030 050 030 29.20 000 120 0 0000";   // real QBEQI from the Inverex Veyron
+  CHECK(setVerified("eqEn", 0, 0, REAL_QPIRI, "", beqi));
+  CHECK(!setVerified("eqEn", 1, 0, REAL_QPIRI, "", beqi));
+  CHECK(setVerified("eqTime", 60, 0, REAL_QPIRI, "", beqi));
+  CHECK(setVerified("eqPeriod", 30, 0, REAL_QPIRI, "", beqi));
+  CHECK(setVerified("eqVolt", 29.2f, 0, REAL_QPIRI, "", beqi));
+  CHECK(setVerified("eqTimeout", 120, 0, REAL_QPIRI, "", beqi));
+  CHECK(setVerified("eqNow", 0, 0, REAL_QPIRI, "", beqi));
+  CHECK(!setVerified("eqTime", 60, 0, REAL_QPIRI, "", ""));   // nothing read: not verified
+  CHECK(setVerified("outV", 230, 0, REAL_QPIRI, ""));
+  CHECK(setVerified("outHz", 50, 0, REAL_QPIRI, ""));
+  CHECK(setVerified("battType", 2, 0, REAL_QPIRI, ""));
 }
 
 static void testPI18() {

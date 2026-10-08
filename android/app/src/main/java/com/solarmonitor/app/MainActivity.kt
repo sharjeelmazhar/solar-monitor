@@ -259,12 +259,12 @@ private fun AppRoot(repo: Repository) {
     }
 }
 
-/** Rounded, frosted-glass tab bar floating above the content (matches the web dashboard). */
+/** Rounded glass tab bar floating above the content: light tint + blur so the page shows through (iOS-style). */
 @Composable
 private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.haze.HazeState, modifier: Modifier) {
     val cs = MaterialTheme.colorScheme
     val dark = cs.surface.luminance() < 0.5f
-    val tint = cs.surfaceContainer.copy(alpha = if (dark) 0.62f else 0.66f)
+    val tint = cs.surfaceContainer.copy(alpha = if (dark) 0.36f else 0.40f)   // more see-through; the blur keeps icons and labels readable
     val shape = RoundedCornerShape(30.dp)
     Box(
         modifier
@@ -272,14 +272,15 @@ private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.
             .padding(horizontal = 14.dp, vertical = 10.dp)
             .widthIn(max = 560.dp)
             .fillMaxWidth()
-            .shadow(18.dp, shape, ambientColor = Color.Black.copy(alpha = 0.25f), spotColor = Color.Black.copy(alpha = 0.25f))
+            .shadow(14.dp, shape, ambientColor = Color.Black.copy(alpha = 0.18f), spotColor = Color.Black.copy(alpha = 0.18f))
             .clip(shape)
             .hazeBlur(HazeInput.Sources(haze), HazeBlurStyle {
-                blurRadius(26.dp)
+                blurRadius(22.dp)
                 colorEffects(listOf(HazeColorEffect.tint(tint)))
                 fallbackColorEffect(HazeColorEffect.tint(cs.surfaceContainer.copy(alpha = 0.96f)))
             })
-            .border(1.dp, cs.outlineVariant.copy(alpha = 0.45f), shape)
+            // glass edge: a bright rim on top fading to a faint one at the bottom
+            .border(1.dp, androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.22f else 0.75f), cs.outlineVariant.copy(alpha = 0.25f))), shape)
             .padding(6.dp),
     ) {
         // one highlight that slides between tabs with a soft spring (same motion as the web bar: bounce 0.15, 0.4 s)
@@ -290,7 +291,7 @@ private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.
                 (itemW + gap) * tab.ordinal,
                 androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 260f), label = "tabPill",
             )
-            Box(Modifier.offset(x = x).width(itemW).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(cs.secondaryContainer))
+            Box(Modifier.offset(x = x).width(itemW).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(cs.secondaryContainer.copy(alpha = 0.72f)))
         Row(Modifier.fillMaxWidth().height(60.dp), horizontalArrangement = Arrangement.spacedBy(gap)) {
             Tab.entries.forEach { t ->
                 val on = t == tab

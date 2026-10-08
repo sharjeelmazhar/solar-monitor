@@ -10,20 +10,27 @@
 #include <cstring>
 
 // QPIRI field index of each setting (Voltronic PI30 order)
-enum { RF_RECHARGE = 8, RF_CUTOFF = 9, RF_BULK = 10, RF_FLOAT = 11, RF_MAXAC = 13, RF_MAXCHG = 14, RF_RANGE = 15,
+enum { RF_OUTV = 2, RF_OUTHZ = 3, RF_RECHARGE = 8, RF_CUTOFF = 9, RF_BULK = 10, RF_FLOAT = 11, RF_BATTTYPE = 12, RF_MAXAC = 13, RF_MAXCHG = 14, RF_RANGE = 15,
        RF_OUTPRIO = 16, RF_CHGPRIO = 17, RF_REDISCHARGE = 22 };
+// Battery equalization settings live in QBEQI, not QPIRI: field = EQ_BASE + QBEQI index
+// QBEQI = enable, time (min), period (days), max current, reserved, voltage, reserved, time-out (min), active, elapsed
+enum { EQ_BASE = 100, EQ_EN = 100, EQ_TIME = 101, EQ_PERIOD = 102, EQ_VOLT = 105, EQ_TIMEOUT = 107, EQ_ACTIVE = 108 };
+enum { KEY_FLAG = -1, KEY_UNKNOWN = -2, KEY_RESTORE = -3 };
+static const int RESTORE_CODE = 7373;   // "restore" must carry this value, so a stray request can never reset the inverter
 
 struct SetKey { const char* key; int field; };
 static const SetKey SET_KEYS[] = {
   {"outPrio", RF_OUTPRIO}, {"chgPrio", RF_CHGPRIO}, {"range", RF_RANGE}, {"bulk", RF_BULK}, {"float", RF_FLOAT},
   {"cutoff", RF_CUTOFF}, {"recharge", RF_RECHARGE}, {"redischarge", RF_REDISCHARGE}, {"maxChg", RF_MAXCHG},
-  {"maxAc", RF_MAXAC}, {"flag", -1},
+  {"maxAc", RF_MAXAC}, {"flag", KEY_FLAG}, {"battType", RF_BATTTYPE}, {"outV", RF_OUTV}, {"outHz", RF_OUTHZ},
+  {"eqEn", EQ_EN}, {"eqNow", EQ_ACTIVE}, {"eqTime", EQ_TIME}, {"eqTimeout", EQ_TIMEOUT}, {"eqPeriod", EQ_PERIOD},
+  {"eqVolt", EQ_VOLT}, {"restore", KEY_RESTORE},
 };
-static const char SET_FLAGS[] = "abjkuvxyz";   // QFLAG letters that may be switched (buzzer, backlight, ...)
+static const char SET_FLAGS[] = "abdjkuvxyz";   // QFLAG letters that may be switched (buzzer, backlight, solar feed, ...)
 
 inline int setKeyField(const char* key) {
   for (const SetKey& k : SET_KEYS) if (!strcmp(k.key, key)) return k.field;
-  return -2;
+  return KEY_UNKNOWN;
 }
 
 // Field i (0-based, space separated) of a QPIRI payload as a number; NAN if missing.
@@ -60,8 +67,12 @@ inline bool onStep(float v, float lo, float step) {
 inline bool buildSetCommand(const char* key, float value, char letter, const char* qpiri, const char* chgList,
                             const char* acList, char* cmd, size_t cap, char* err, size_t errCap) {
   int field = setKeyField(key);
-  if (field == -2) { snprintf(err, errCap, "unknown setting"); return false; }
-  if (field == -1) {
+  if (field == KEY_UNKNOWN) { snprintf(err, errCap, "unknown setting"); return false; }
+  if (field == KEY_RESTORE) {
+    if (lroundf(value) != RESTORE_CODE) { snprintf(err, errCap, "restore not confirmed"); return false; }
+    snprintf(cmd, cap, "PF"); return true;
+  }
+  if (field == KEY_FLAG) {
     if (!letter || !strchr(SET_FLAGS, letter) || (value != 0 && value != 1)) { snprintf(err, errCap, "unknown option"); return false; }
     snprintf(cmd, cap, "P%c%c", value == 1 ? 'E' : 'D', letter);
     return true;
@@ -80,7 +91,38 @@ inline bool buildSetCommand(const char* key, float value, char letter, const cha
     }
     return true;
   };
+  auto steps = [&](int lo, int hi, int step) -> bool {
+    if (!isInt || iv < lo || iv > hi || (iv - lo) % step) { snprintf(err, errCap, "allowed %d to %d in steps of %d", lo, hi, step); return false; }
+    return true;
+  };
   switch (field) {
+    case RF_BATTTYPE:   // AGM, flooded, user, Pylontech (the lithium types need a model-specific code: not offered)
+      if (!isInt || iv < 0 || iv > 3) { snprintf(err, errCap, "allowed 0 to 3"); return false; }
+      snprintf(cmd, cap, "PBT%02d", iv); return true;
+    case RF_OUTV:
+      if (!isInt || (iv != 220 && iv != 230 && iv != 240)) { snprintf(err, errCap, "allowed 220, 230 or 240 V"); return false; }
+      snprintf(cmd, cap, "V%d", iv); return true;
+    case RF_OUTHZ:
+      if (!isInt || (iv != 50 && iv != 60)) { snprintf(err, errCap, "allowed 50 or 60 Hz"); return false; }
+      snprintf(cmd, cap, "F%d", iv); return true;
+    case EQ_EN:
+      if (!isInt || iv < 0 || iv > 1) { snprintf(err, errCap, "allowed 0 or 1"); return false; }
+      snprintf(cmd, cap, "PBEQE%d", iv); return true;
+    case EQ_ACTIVE:
+      if (!isInt || iv < 0 || iv > 1) { snprintf(err, errCap, "allowed 0 or 1"); return false; }
+      snprintf(cmd, cap, "PBEQA%d", iv); return true;
+    case EQ_TIME:
+      if (!steps(5, 900, 5)) return false;
+      snprintf(cmd, cap, "PBEQT%03d", iv); return true;
+    case EQ_TIMEOUT:
+      if (!steps(5, 900, 5)) return false;
+      snprintf(cmd, cap, "PBEQOT%03d", iv); return true;
+    case EQ_PERIOD:
+      if (!steps(0, 90, 1)) return false;
+      snprintf(cmd, cap, "PBEQP%03d", iv); return true;
+    case EQ_VOLT:
+      if (!range(12.0f * k, 15.25f * k, 0.05f * k)) return false;
+      snprintf(cmd, cap, "PBEQV%05.2f", value); return true;
     case RF_OUTPRIO:
       if (!isInt || iv < 0 || iv > 2) { snprintf(err, errCap, "allowed 0 to 2"); return false; }
       snprintf(cmd, cap, "POP%02d", iv); return true;
@@ -127,9 +169,15 @@ inline bool buildSetCommand(const char* key, float value, char letter, const cha
 }
 
 // After the inverter says ACK: does the fresh QPIRI / QFLAG show the new value?
-inline bool setVerified(const char* key, float value, char letter, const char* qpiri, const char* qflag) {
+// Restore to defaults cannot be checked field by field: the ACK is the answer.
+inline bool setVerified(const char* key, float value, char letter, const char* qpiri, const char* qflag, const char* qbeqi = "") {
   int field = setKeyField(key);
-  if (field == -1) {
+  if (field == KEY_RESTORE) return true;
+  if (field >= EQ_BASE) {
+    float now = qpiriField(qbeqi, field - EQ_BASE);
+    return !std::isnan(now) && fabsf(now - value) < 0.005f;
+  }
+  if (field == KEY_FLAG) {
     const char* d = strchr(qflag, 'D');   // QFLAG = "E<enabled letters>D<disabled letters>"
     const char* l = strchr(qflag, letter);
     if (!d || !l) return false;

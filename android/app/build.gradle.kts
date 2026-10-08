@@ -1,4 +1,4 @@
-﻿import java.util.Properties
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -20,8 +20,8 @@ android {
         applicationId = "com.solarmonitor.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.4.0"
+        versionCode = 8
+        versionName = "1.5.0"
     }
 
     signingConfigs {

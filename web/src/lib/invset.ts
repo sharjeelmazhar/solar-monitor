@@ -1,10 +1,10 @@
 // Inverter settings that can be changed from the apps (Advanced mode). Same list, ranges and wording as the
 // Android app (android/.../data/InvSet.kt) and the firmware check (firmware/solar_monitor_v3/invset.h), which
 // refuses anything outside these ranges a second time before it reaches the inverter.
-import { CHG_PRIO, CHG_PRIO_HELP, OUT_PRIO, OUT_PRIO_HELP, type Rated } from './decode'
+import { BATT_TYPES, CHG_PRIO, CHG_PRIO_HELP, OUT_PRIO, OUT_PRIO_HELP, type Rated } from './decode'
 import { API_BASE, refreshInfo } from './store'
 
-export type SetKind = 'choice' | 'volts' | 'amps' | 'flag'
+export type SetKind = 'choice' | 'volts' | 'amps' | 'flag' | 'steps'
 
 export interface SetDef {
   key: string
@@ -12,7 +12,12 @@ export interface SetDef {
   help: string
   kind: SetKind
   letter?: string // flags only
+  unit?: string // 'steps' only
 }
+
+/** "Restore to the defaults" must carry this code (the firmware refuses anything else). */
+export const RESTORE_CODE = 7373
+export const RESTORE_WORD = 'RESET'
 
 export const INV_SETTINGS: SetDef[] = [
   { key: 'outPrio', label: 'Output priority', kind: 'choice', help: 'Which source powers the home first.' },
@@ -25,6 +30,15 @@ export const INV_SETTINGS: SetDef[] = [
   { key: 'maxChg', label: 'Max charge current', kind: 'amps', help: 'Total charging current limit (solar + grid).' },
   { key: 'maxAc', label: 'Max grid charge current', kind: 'amps', help: 'Charging current limit from the grid.' },
   { key: 'range', label: 'AC input range', kind: 'choice', help: 'Appliance accepts a wider grid voltage; UPS switches to battery faster (for computers).' },
+  { key: 'outV', label: 'Output voltage', kind: 'choice', help: 'Voltage the inverter gives the home. Pakistan uses 230 V. Some inverters only accept this while the output is off.' },
+  { key: 'outHz', label: 'Output frequency', kind: 'choice', help: 'Pakistan uses 50 Hz. 60 Hz can damage motors and clocks made for 50 Hz.' },
+  { key: 'battType', label: 'Battery type', kind: 'choice', help: 'AGM and Flooded use fixed charge voltages; User lets you set them yourself; Pylontech talks to the battery. Lithium types other than Pylontech use model-specific codes and are not offered.' },
+  { key: 'eqEn', label: 'Battery equalization', kind: 'choice', help: 'For flooded lead-acid batteries only: a regular, higher charge that mixes the acid. Never for lithium or AGM/gel.' },
+  { key: 'eqNow', label: 'Equalize now', kind: 'choice', help: 'Starts or stops one equalization charge right away (equalization must be on).' },
+  { key: 'eqVolt', label: 'Equalization voltage', kind: 'volts', help: 'Voltage held during equalization. Follow your battery maker\'s value.' },
+  { key: 'eqTime', label: 'Equalization time', kind: 'steps', unit: 'min', help: 'How long the battery is held at the equalization voltage.' },
+  { key: 'eqTimeout', label: 'Equalization time-out', kind: 'steps', unit: 'min', help: 'Longest an equalization may run if the voltage is not reached.' },
+  { key: 'eqPeriod', label: 'Equalize every', kind: 'steps', unit: 'days', help: 'Days between automatic equalizations.' },
   { key: 'flag', letter: 'a', label: 'Buzzer', kind: 'flag', help: 'Beeps on alarms and key presses.' },
   { key: 'flag', letter: 'y', label: 'Beep on grid loss', kind: 'flag', help: 'Beeps when the grid goes off.' },
   { key: 'flag', letter: 'x', label: 'LCD backlight', kind: 'flag', help: 'Keeps the screen lit.' },
@@ -34,7 +48,18 @@ export const INV_SETTINGS: SetDef[] = [
   { key: 'flag', letter: 'b', label: 'Overload bypass', kind: 'flag', help: 'Switches to the grid when the load is too big for the inverter.' },
   { key: 'flag', letter: 'j', label: 'Power saving', kind: 'flag', help: 'Turns the inverter output off when nothing is connected.' },
   { key: 'flag', letter: 'z', label: 'Fault code record', kind: 'flag', help: 'Keeps a history of fault codes in the inverter.' },
+  { key: 'flag', letter: 'd', label: 'Solar feed to grid', kind: 'flag', help: 'Sends spare solar power to the grid. Only on grid-tie models and only where the utility allows it.' },
+  { key: 'restore', label: 'Restore factory defaults', kind: 'choice', help: 'Puts every inverter setting back to the factory values, including the battery voltages.' },
 ]
+
+/** Equalization fields in QBEQI (enable, time, period, max current, -, voltage, -, time-out, active, elapsed). */
+const EQ_FIELD: Record<string, number> = { eqEn: 0, eqTime: 1, eqPeriod: 2, eqVolt: 5, eqTimeout: 7, eqNow: 8 }
+export const isEq = (d: SetDef) => d.key in EQ_FIELD
+
+export function parseEq(beqi: string | undefined): number[] | null {
+  const f = (beqi || '').trim().split(/\s+/).map(parseFloat)
+  return f.length >= 9 && !f.slice(0, 9).some(Number.isNaN) ? f : null
+}
 
 export const setId = (d: SetDef) => (d.letter ? 'flag:' + d.letter : d.key)
 
@@ -49,12 +74,25 @@ export function choicesOf(d: SetDef, r: Rated, chgCur: string, acCur: string): C
     for (let v = lo; v <= hi + 1e-6; v += step) out.push({ value: Math.round(v * 100) / 100, label: (Math.round(v * 100) / 100).toFixed(1) + ' V' })
     return out
   }
+  const steps = (lo: number, hi: number, step: number, unit: string): Choice[] => {
+    const out: Choice[] = []
+    for (let v = lo; v <= hi; v += step) out.push({ value: v, label: v + ' ' + unit })
+    return out
+  }
   const list = (s: string, max = 999): Choice[] =>
     s.trim().split(/\s+/).filter(Boolean).map(Number).filter((n) => n > 0 && n <= max).map((n) => ({ value: n, label: n + ' A' }))
   switch (d.key) {
     case 'outPrio': return OUT_PRIO.map((label, value) => ({ value, label, help: OUT_PRIO_HELP[value] }))
     case 'chgPrio': return CHG_PRIO.map((label, value) => ({ value, label, help: CHG_PRIO_HELP[value] }))
     case 'range': return [{ value: 0, label: 'Appliance (wide)' }, { value: 1, label: 'UPS (narrow)' }]
+    case 'outV': return [220, 230, 240].map((v) => ({ value: v, label: v + ' V' }))
+    case 'outHz': return [50, 60].map((v) => ({ value: v, label: v + ' Hz' }))
+    case 'battType': return BATT_TYPES.slice(0, 4).map((label, value) => ({ value, label }))
+    case 'eqEn': return [{ value: 1, label: 'On' }, { value: 0, label: 'Off' }]
+    case 'eqNow': return [{ value: 1, label: 'Equalizing now' }, { value: 0, label: 'Not running' }]
+    case 'eqVolt': return volts(12 * k, 15.25 * k, 0.05 * k).map((c) => ({ value: c.value, label: c.value.toFixed(2) + ' V' }))
+    case 'eqTime': case 'eqTimeout': return steps(5, 900, 5, 'min')
+    case 'eqPeriod': return steps(0, 90, 1, 'days')
     case 'bulk': return volts(12 * k, 14.6 * k, 0.1).filter((c) => c.value >= r.float - 1e-6)
     case 'float': return volts(12 * k, 14.6 * k, 0.1).filter((c) => c.value <= r.bulk + 1e-6)
     case 'cutoff': return volts(10.5 * k, 12 * k, 0.1).filter((c) => c.value < r.recharge - 1e-6)
@@ -68,7 +106,9 @@ export function choicesOf(d: SetDef, r: Rated, chgCur: string, acCur: string): C
 }
 
 /** Current value of a setting (number), from QPIRI / QFLAG. */
-export function currentOf(d: SetDef, r: Rated, qflag: string): number | null {
+export function currentOf(d: SetDef, r: Rated, qflag: string, beqi = ''): number | null {
+  if (isEq(d)) return parseEq(beqi)?.[EQ_FIELD[d.key]] ?? null
+  if (d.key === 'restore') return null
   if (d.kind === 'flag') {
     const m = /^E([a-z]*)D([a-z]*)$/.exec(qflag)
     if (!m || !d.letter) return null
@@ -84,6 +124,7 @@ export function labelOf(d: SetDef, v: number | null, r: Rated, chgCur: string, a
   if (c) return c.label
   if (d.kind === 'volts') return v === 0 ? 'Full battery' : v.toFixed(1) + ' V'
   if (d.kind === 'amps') return v + ' A'
+  if (d.kind === 'steps') return v + ' ' + d.unit
   return String(v)
 }
 
