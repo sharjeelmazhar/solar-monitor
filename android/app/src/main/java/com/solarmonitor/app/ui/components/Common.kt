@@ -214,10 +214,29 @@ fun ScreenList(padding: androidx.compose.foundation.layout.PaddingValues, column
                 top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 16.dp),
             verticalItemSpacing = spacing,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            content = content,
+            content = { content(); full("credit") { Credit() } },
         )
     }
 }
+
+/** "Developed by SMR" at the end of every screen; opens the developer's GitHub profile (same as the web footer). */
+@Composable
+fun Credit() {
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    val cs = MaterialTheme.colorScheme
+    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+        androidx.compose.foundation.layout.Row(
+            androidx.compose.ui.Modifier.clip(RoundedCornerShape(50)).clickable { uri.openUri(GITHUB) }.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text("Developed by ", color = cs.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Text("SMR", color = cs.onSurface, style = MaterialTheme.typography.bodySmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, letterSpacing = 1.sp)
+            Text("  ↗", color = cs.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+const val GITHUB = "https://github.com/sharjeelmazhar"
 
 /** An item that spans every column of a [ScreenList]. */
 fun androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope.full(key: Any, content: @Composable () -> Unit) =

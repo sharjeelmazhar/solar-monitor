@@ -80,12 +80,20 @@ export default function App() {
         {page}
       </motion.main>
 
-      <nav className="glass fixed inset-x-3 bottom-[calc(10px+env(safe-area-inset-bottom))] z-30 flex rounded-3xl p-1.5 md:hidden" aria-label="Sections">
+      {/* credit at the end of every page, same as the Android app */}
+      <footer className="mt-6 flex justify-center">
+        <a href="https://github.com/sharjeelmazhar" target="_blank" rel="noopener"
+          className="focus-ring inline-flex min-h-10 items-center gap-1 rounded-full px-4 text-xs text-text-3 transition-colors hover:text-text">
+          Developed by <span className="font-bold tracking-wider text-text">SMR</span> <span aria-hidden>↗</span>
+        </a>
+      </footer>
+
+      <nav className="glass-nav fixed left-1/2 bottom-[calc(12px+env(safe-area-inset-bottom))] z-30 flex w-[75%] max-w-[440px] -translate-x-1/2 rounded-full p-[5px] md:hidden" aria-label="Sections">
         {TABS.map((t) => (
           <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined}
-            className={cn('focus-ring relative flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl text-[11px] font-medium', tab === t.id ? 'text-text' : 'text-text-3')}>
-            {tab === t.id && <motion.span layoutId="mtab" className="absolute inset-0 rounded-2xl bg-surface-3" transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }} />}
-            <t.icon size={19} className="relative" />
+            className={cn('focus-ring relative flex min-h-[50px] flex-1 flex-col items-center justify-center gap-0.5 rounded-full text-[10.5px] font-medium', tab === t.id ? 'text-text' : 'text-text-3')}>
+            {tab === t.id && <motion.span layoutId="mtab" className="absolute inset-0 rounded-full bg-black/[0.07] ring-1 ring-white/60 dark:bg-white/[0.14] dark:ring-white/20" transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }} />}
+            <t.icon size={18} className="relative" />
             <span className="relative">{t.label}</span>
           </button>
         ))}

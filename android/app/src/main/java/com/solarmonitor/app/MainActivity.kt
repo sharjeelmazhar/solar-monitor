@@ -259,50 +259,53 @@ private fun AppRoot(repo: Repository) {
     }
 }
 
-/** Rounded glass tab bar floating above the content: light tint + blur so the page shows through (iOS-style). */
+/** Floating capsule tab bar in Apple's "Liquid Glass" style: about 3/4 of the screen wide, almost clear (no tint, no gloss),
+ *  the page behind only softened by a light blur, with a thin specular rim that catches light at the top-left and bottom-right. */
 @Composable
 private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.haze.HazeState, modifier: Modifier) {
     val cs = MaterialTheme.colorScheme
     val dark = cs.surface.luminance() < 0.5f
-    val tint = cs.surfaceContainer.copy(alpha = if (dark) 0.16f else 0.20f)   // mostly see-through: the page shows through, softened by the blur
-    val shape = RoundedCornerShape(30.dp)
+    val tint = (if (dark) Color.Black else Color.White).copy(alpha = if (dark) 0.10f else 0.08f)   // barely there: clear glass, not frosted
+    val shape = RoundedCornerShape(50)
+    val rim = androidx.compose.ui.graphics.Brush.linearGradient(listOf(
+        Color.White.copy(alpha = if (dark) 0.45f else 0.95f), Color.White.copy(alpha = if (dark) 0.06f else 0.20f), Color.White.copy(alpha = if (dark) 0.30f else 0.70f)))
     Box(
         modifier
             .padding(WindowInsets.navigationBars.asPaddingValues())
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-            .widthIn(max = 560.dp)
-            .fillMaxWidth()
-            .shadow(14.dp, shape, ambientColor = Color.Black.copy(alpha = 0.18f), spotColor = Color.Black.copy(alpha = 0.18f))
+            .padding(bottom = 12.dp)
+            .fillMaxWidth(0.75f)
+            .widthIn(max = 440.dp)
+            .shadow(18.dp, shape, ambientColor = Color.Black.copy(alpha = 0.22f), spotColor = Color.Black.copy(alpha = 0.22f))
             .clip(shape)
             .hazeBlur(HazeInput.Sources(haze), HazeBlurStyle {
-                blurRadius(14.dp)
+                blurRadius(9.dp)   // light blur: the page stays recognisable through the glass
                 colorEffects(listOf(HazeColorEffect.tint(tint)))
                 fallbackColorEffect(HazeColorEffect.tint(cs.surfaceContainer.copy(alpha = 0.96f)))
             })
-            // glass edge: a bright rim on top fading to a faint one at the bottom
-            .border(1.dp, androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.22f else 0.75f), cs.outlineVariant.copy(alpha = 0.25f))), shape)
-            .padding(6.dp),
+            .border(1.2.dp, rim, shape)
+            .padding(5.dp),
     ) {
         // one highlight that slides between tabs with a soft spring (same motion as the web bar: bounce 0.15, 0.4 s)
-        BoxWithConstraints(Modifier.fillMaxWidth().height(60.dp)) {
-            val gap = 4.dp
+        BoxWithConstraints(Modifier.fillMaxWidth().height(56.dp)) {
+            val gap = 2.dp
             val itemW = (maxWidth - gap * (Tab.entries.size - 1)) / Tab.entries.size
             val x by androidx.compose.animation.core.animateDpAsState(
                 (itemW + gap) * tab.ordinal,
                 androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 260f), label = "tabPill",
             )
-            Box(Modifier.offset(x = x).width(itemW).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(cs.secondaryContainer.copy(alpha = 0.6f)))
-        Row(Modifier.fillMaxWidth().height(60.dp), horizontalArrangement = Arrangement.spacedBy(gap)) {
+            Box(Modifier.offset(x = x).width(itemW).fillMaxHeight().clip(RoundedCornerShape(50)).background((if (dark) Color.White else Color.Black).copy(alpha = if (dark) 0.14f else 0.07f))
+                .border(1.dp, Color.White.copy(alpha = if (dark) 0.18f else 0.6f), RoundedCornerShape(50)))
+        Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(gap)) {
             Tab.entries.forEach { t ->
                 val on = t == tab
                 val fg by animateColorAsState(if (on) cs.onSecondaryContainer else cs.onSurfaceVariant, label = "tabFg")
                 Column(
-                    Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(24.dp))
+                    Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(50))
                         .clickable(remember { MutableInteractionSource() }, indication = androidx.compose.material3.ripple()) { onSelect(t) }
                         .semantics { role = Role.Tab; selected = on; contentDescription = t.label },
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
                 ) {
-                    Icon(t.icon, null, tint = fg, modifier = Modifier.size(23.dp))
+                    Icon(t.icon, null, tint = fg, modifier = Modifier.size(21.dp))
                     Spacer(Modifier.height(2.dp))
                     Text(t.label, color = fg, fontSize = 11.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
                 }
