@@ -1,11 +1,11 @@
-import { ExternalLink, Lock, RefreshCw } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { BillSettings } from '../components/BillSettings'
-import { Button, Card, CardHeader, IconButton, Segmented, Switch } from '../components/ui/ui'
-import { BATT_TYPES, CHG_PRIO, CHG_PRIO_HELP, OUT_PRIO, OUT_PRIO_HELP, parseFlags, parseRated } from '../lib/decode'
+import { InverterSettings } from '../components/InverterSettings'
+import { Button, Card, CardHeader, Segmented, Switch } from '../components/ui/ui'
 import { dayLabel, fmtDuration } from '../lib/format'
 import { use3d, useBattIdle, useClock, webglAvailable, type Theme } from '../lib/prefs'
-import { API_BASE, refreshInfo, refreshInverter, saveSettings, useStore } from '../lib/store'
+import { API_BASE, saveSettings, useStore } from '../lib/store'
 import { Alerts, alertsOf } from './OverviewPage'
 
 function Row({ k, v, help }: { k: string; v: ReactNode; help?: string }) {
@@ -23,42 +23,13 @@ function Row({ k, v, help }: { k: string; v: ReactNode; help?: string }) {
 export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void }) {
   const d = useStore((s) => s.live)
   const info = useStore((s) => s.info)
-  const r = parseRated(info?.inv.qpiri)
-  const flags = parseFlags(info?.inv.qflag)
-  const [busy, setBusy] = useState(false)
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       {d?.ever && <Alerts items={alertsOf(d)} />}
       <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <div className="flex flex-col gap-4 [&>*]:min-w-0 [&>*:last-child]:flex-1">
-        <Card>
-          <CardHeader
-            title="Inverter settings"
-            sub={<span className="inline-flex items-center gap-1"><Lock size={12} /> read-only · changing settings comes with Advanced mode</span>}
-            action={<IconButton label="Read settings from inverter again" disabled={busy} onClick={async () => { setBusy(true); await refreshInverter(); setTimeout(async () => { await refreshInfo(); setBusy(false) }, 4000) }}>
-              <RefreshCw size={16} className={busy ? 'animate-spin' : ''} />
-            </IconButton>}
-          />
-          {!r && <p className="text-sm text-text-2">Not read yet.</p>}
-          {r && (
-            <div>
-              <Row k="Output priority" v={OUT_PRIO[r.outPrio] ?? r.outPrio} help={OUT_PRIO_HELP[r.outPrio]} />
-              <Row k="Charger priority" v={CHG_PRIO[r.chgPrio] ?? r.chgPrio} help={CHG_PRIO_HELP[r.chgPrio]} />
-              <Row k="Battery" v={`${r.battV} V · ${BATT_TYPES[r.battType] ?? 'type ' + r.battType}`}
-                help={r.battType === 2 ? 'User-defined type: the inverter estimates battery % from voltage, so it can read 100 % while discharging lightly.' : undefined} />
-              <Row k="Bulk / float charge" v={`${r.bulk} V / ${r.float} V`} help="Bulk: voltage the charger pushes up to. Float: voltage it holds once full." />
-              <Row k="Low cut-off" v={`${r.cutoff} V`} help="Below this the inverter switches the battery off to protect it." />
-              <Row k="Back to grid / back to battery" v={`${r.recharge} V / ${r.redischarge ?? '–'} V`} help="Battery voltage at which the inverter switches the home to the grid, and back to battery after recharging." />
-              <Row k="Max charge current" v={`${r.maxChg} A (from grid ${r.maxAc} A)`} />
-              <Row k="AC input range" v={r.range === 1 ? 'UPS (narrow)' : 'Appliance (wide)'} help={r.range === 1 ? 'Switches to battery quickly; protects computers.' : 'Tolerates wider grid voltage; fine for most homes.'} />
-              <Row k="Rated power" v={`${r.outW} W / ${r.outVA} VA`} />
-              {info?.inv.qid && <Row k="Serial number" v={info.inv.qid} />}
-              {info?.inv.qvfw && <Row k="Inverter firmware" v={info.inv.qvfw.replace(/^VERFW:/, '')} />}
-              {flags && <Row k="Enabled features" v={flags.on.join(', ') || '–'} />}
-            </div>
-          )}
-        </Card>
+        <InverterSettings />
         </div>
 
         <div className="flex flex-col gap-4 [&>*]:min-w-0 [&>*:last-child]:flex-1">

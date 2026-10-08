@@ -42,33 +42,7 @@ fun SystemScreen(repo: Repository, padding: PaddingValues) {
 
     ScreenList(padding) {
         d?.takeIf { it.ever }?.let { full("alerts") { AlertsCard(alertItems(it)) } }
-        item(key = "inv") {
-            val i = info
-            val r = i?.rated
-            val rows = buildList {
-                if (r != null) {
-                    add("Rated power" to "${r.outW} W / ${r.outVA} VA")
-                    add("Battery system" to "${r.battV} V · ${Decode.battTypes.getOrElse(r.battType) { "type ${r.battType}" }}")
-                    add("Output priority" to Decode.outPrio.getOrElse(r.outPrio) { "${r.outPrio}" })
-                    add("Charger priority" to Decode.chgPrio.getOrElse(r.chgPrio) { "${r.chgPrio}" })
-                    add("Bulk / float" to "${r.bulk} V / ${r.float} V")
-                    add("Cut-off / recharge" to "${r.cutoff} V / ${r.recharge} V")
-                    r.redischarge?.let { add("Back to battery at" to "$it V") }
-                    add("Max charge current" to "${r.maxChg} A (grid ${r.maxAc} A)")
-                    add("AC input range" to if (r.range == 1) "UPS (narrow)" else "Appliance (wide)")
-                }
-                if (i != null) {
-                    if (i.qid.isNotEmpty()) add("Serial number" to i.qid)
-                    if (i.qvfw.isNotEmpty()) add("Inverter firmware" to i.qvfw.removePrefix("VERFW:"))
-                    Decode.enabledFlags(i.qflag)?.let { add("Enabled" to it) }
-                }
-            }
-            SectionCard("Inverter", action = {
-                IconButton(onClick = { scope.launch { repo.refreshInverter(); delay(4000); repo.refreshInfo() } }) { Icon(Icons.Rounded.Refresh, "Re-read inverter settings") }
-            }) {
-                if (rows.isEmpty()) Text("Not read yet") else InfoRows(rows)
-            }
-        }
+        item(key = "inv") { androidx.compose.foundation.layout.Column { InverterSettingsCard(repo) } }
         item(key = "dev") {
             val i = info
             val p = d

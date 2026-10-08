@@ -73,6 +73,27 @@ class Api(context: Context, private val host: () -> String) {
         }
     }
 
+    /** POST that also returns error answers: (HTTP status, body). Status 0 = the monitor could not be reached. */
+    suspend fun postResult(path: String, params: Map<String, String>): Pair<Int, String> = withContext(Dispatchers.IO) {
+        val body = params.entries.joinToString("&") { URLEncoder.encode(it.key, "UTF-8") + "=" + URLEncoder.encode(it.value, "UTF-8") }
+        try {
+            val c = open(path, 5000, 8000)
+            try {
+                c.requestMethod = "POST"
+                c.doOutput = true
+                c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                c.outputStream.use { it.write(body.toByteArray()) }
+                val code = c.responseCode
+                val text = (if (code in 200..299) c.inputStream else c.errorStream)?.use { String(it.readBytes()) } ?: ""
+                code to text
+            } finally {
+                c.disconnect()
+            }
+        } catch (_: IOException) {
+            0 to ""
+        }
+    }
+
     /**
      * Server-Sent Events. Blocks until the connection drops (throws) or the coroutine is cancelled.
      * [readTimeoutMs] must be longer than the server heartbeat.

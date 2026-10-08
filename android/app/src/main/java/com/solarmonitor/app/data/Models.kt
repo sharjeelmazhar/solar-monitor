@@ -76,6 +76,7 @@ data class Info(
     val clients: Int, val histFrom: Int, val battAh: Double, val tariff: Double,
     val cycDay: Int, val cycHour: Int,   // -1 on firmware without the billing counter
     val qpiri: String, val qid: String, val qvfw: String, val qflag: String,
+    val proto: String = "", val chgCur: String = "", val acCur: String = "",
 ) {
     val rated: Rated? get() = Rated.parse(qpiri)
 
@@ -91,6 +92,7 @@ data class Info(
                 battAh = j.optDouble("battAh", 0.0), tariff = j.optDouble("tariff", 0.0),
                 cycDay = j.optInt("cycDay", -1), cycHour = j.optInt("cycHour", -1),
                 qpiri = inv.optString("qpiri"), qid = inv.optString("qid"), qvfw = inv.optString("qvfw"), qflag = inv.optString("qflag"),
+                proto = inv.optString("proto"), chgCur = inv.optString("chgCur"), acCur = inv.optString("acCur"),
             )
         }
     }
@@ -199,8 +201,19 @@ object Decode {
     fun activeWarnings(warn: String): List<Int> = warn.indices.filter { warn[it] == '1' && it in warnings && it != 5 }
 
     val battTypes = listOf("AGM", "Flooded", "User defined", "Pylontech (lithium)", "Shinheung (lithium)", "WECO (lithium)", "Soltaro (lithium)", "BAK (lithium)", "Lithium")
-    val outPrio = listOf("Utility first (USB)", "Solar first (SUB)", "Solar-Battery-Utility (SBU)")
+    val outPrio = listOf("Utility first (USB)", "Solar first (SUB)", "Solar → Battery → Utility (SBU)")
+    val outPrioHelp = listOf(
+        "The grid powers the home whenever it is available; solar and battery only take over during outages.",
+        "Solar powers the home first; the grid fills in when solar is not enough; the battery is kept for outages.",
+        "Solar first, then the battery, and the grid only when the battery reaches its low limit. Saves the most units.",
+    )
     val chgPrio = listOf("Utility first", "Solar first", "Solar + Utility", "Solar only")
+    val chgPrioHelp = listOf(
+        "The battery charges from the grid first, solar helps.",
+        "The battery charges from solar first; the grid only charges it when there is no solar.",
+        "Solar and grid charge the battery together (fastest).",
+        "Only solar charges the battery; the grid never does.",
+    )
     private val flagNames = mapOf(
         'a' to "Buzzer", 'b' to "Overload bypass", 'j' to "Power saving", 'k' to "LCD back to home screen",
         'u' to "Overload auto-restart", 'v' to "Over-temp auto-restart", 'x' to "LCD backlight", 'y' to "Beep on grid loss", 'z' to "Fault code record",

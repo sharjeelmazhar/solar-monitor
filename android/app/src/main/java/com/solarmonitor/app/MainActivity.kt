@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -274,13 +275,21 @@ private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.
             .border(1.dp, cs.outlineVariant.copy(alpha = 0.45f), shape)
             .padding(6.dp),
     ) {
-        Row(Modifier.fillMaxWidth().height(60.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        // one highlight that slides between tabs with a soft spring (same motion as the web bar: bounce 0.15, 0.4 s)
+        BoxWithConstraints(Modifier.fillMaxWidth().height(60.dp)) {
+            val gap = 4.dp
+            val itemW = (maxWidth - gap * (Tab.entries.size - 1)) / Tab.entries.size
+            val x by androidx.compose.animation.core.animateDpAsState(
+                (itemW + gap) * tab.ordinal,
+                androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 260f), label = "tabPill",
+            )
+            Box(Modifier.offset(x = x).width(itemW).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(cs.secondaryContainer))
+        Row(Modifier.fillMaxWidth().height(60.dp), horizontalArrangement = Arrangement.spacedBy(gap)) {
             Tab.entries.forEach { t ->
                 val on = t == tab
-                val bg by animateColorAsState(if (on) cs.secondaryContainer else Color.Transparent, label = "tabBg")
                 val fg by animateColorAsState(if (on) cs.onSecondaryContainer else cs.onSurfaceVariant, label = "tabFg")
                 Column(
-                    Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(bg)
+                    Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(24.dp))
                         .clickable(remember { MutableInteractionSource() }, indication = androidx.compose.material3.ripple()) { onSelect(t) }
                         .semantics { role = Role.Tab; selected = on; contentDescription = t.label },
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
@@ -290,6 +299,7 @@ private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.
                     Text(t.label, color = fg, fontSize = 11.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
                 }
             }
+        }
         }
     }
 }

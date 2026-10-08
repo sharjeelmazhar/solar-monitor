@@ -87,7 +87,7 @@ export interface Info {
   cycDay?: number
   cycHour?: number
   tariff: number
-  inv: { qpiri: string; qid: string; qvfw: string; qflag: string }
+  inv: { proto?: string; qpiri: string; qid: string; qvfw: string; qflag: string; chgCur?: string; acCur?: string }
   ui?: string
 }
 

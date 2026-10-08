@@ -3,7 +3,7 @@
 //  Solar Monitor v3 - settings you may want to change
 // ============================================================================
 
-#define FW_VERSION "3.3.1"
+#define FW_VERSION "3.4.0"
 
 // Network name: the dashboard is also reachable at http://solar.local/
 #define HOSTNAME "solar"
@@ -37,6 +37,12 @@
 #define ADMIN_USER "admin"
 #ifndef ADMIN_PASS
 #define ADMIN_PASS "change-me-now"
+#endif
+
+// Password for changing inverter settings from the apps (edit mode). Set it in secrets.h; without one it is the
+// admin password above.
+#ifndef SET_PASS
+#define SET_PASS ADMIN_PASS
 #endif
 
 // Time zone (POSIX format). Pakistan = UTC+5, no daylight saving.

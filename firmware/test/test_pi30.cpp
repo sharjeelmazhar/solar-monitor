@@ -1,6 +1,8 @@
 // Host-side tests for the PI30 protocol code (firmware/solar_monitor_v3/pi30.h).
 // Build & run:  firmware/test/run.ps1  (or: g++ -std=c++17 -I../solar_monitor_v3 test_pi30.cpp && ./a.out)
 #include "pi30.h"
+#include "pi18.h"
+#include "invset.h"
 
 #include <cstdio>
 #include <string>
@@ -175,6 +177,91 @@ static void testHelpers() {
   CHECK(strcmp(d, "abc") == 0);
 }
 
+
+// Real QPIRI from the Inverex Veyron (24 V battery)
+static const char* REAL_QPIRI = "230.0 13.9 230.0 50.0 13.9 3200 3200 24.0 24.0 22.1 27.2 26.8 02 010 050 1 1 1 1 01 0 0 26.5 0 1";
+
+static std::string setCmd(const char* key, float v, char letter = 0, const char* chg = "010 020 030 040 050 060", const char* ac = "002 010 020 030") {
+  char cmd[24] = "", err[64] = "";
+  return buildSetCommand(key, v, letter, REAL_QPIRI, chg, ac, cmd, sizeof cmd, err, sizeof err) ? std::string(cmd) : std::string("ERR ") + err;
+}
+static bool isErr(const std::string& s) { return s.rfind("ERR", 0) == 0; }
+
+static void testSetCommands() {
+  CHECK(setCmd("outPrio", 2) == "POP02");
+  CHECK(isErr(setCmd("outPrio", 3)));
+  CHECK(setCmd("chgPrio", 3) == "PCP03");
+  CHECK(setCmd("range", 0) == "PGR00");
+  CHECK(setCmd("bulk", 28.2f) == "PCVV28.2");
+  CHECK(isErr(setCmd("bulk", 26.0f)));      // below float 26.8
+  CHECK(isErr(setCmd("bulk", 29.3f)));      // above 29.2 for 24 V
+  CHECK(setCmd("float", 27.0f) == "PBFT27.0");
+  CHECK(isErr(setCmd("float", 27.5f)));     // above bulk 27.2
+  CHECK(setCmd("cutoff", 21.0f) == "PSDV21.0");
+  CHECK(isErr(setCmd("cutoff", 20.9f)));
+  CHECK(isErr(setCmd("cutoff", 24.0f)));    // not below back-to-grid 24.0
+  CHECK(setCmd("recharge", 23.5f) == "PBCV23.5");
+  CHECK(isErr(setCmd("recharge", 23.3f)));  // 0.5 V steps on 24 V
+  CHECK(isErr(setCmd("recharge", 26.5f)));   // not below back-to-battery 26.5
+  CHECK(setCmd("redischarge", 0) == "PBDV00.0");
+  CHECK(setCmd("redischarge", 27.0f) == "PBDV27.0");
+  CHECK(isErr(setCmd("redischarge", 23.5f)));
+  CHECK(setCmd("maxChg", 60) == "MCHGC060");
+  CHECK(isErr(setCmd("maxChg", 55)));
+  CHECK(setCmd("maxChg", 100, 0, "060 080 100") == "MNCHGC0100");
+  CHECK(isErr(setCmd("maxChg", 60, 0, "")));  // list not read: refuse
+  CHECK(setCmd("maxAc", 20) == "MUCHGC020");
+  CHECK(setCmd("flag", 1, 'a') == "PEa");
+  CHECK(setCmd("flag", 0, 'x') == "PDx");
+  CHECK(isErr(setCmd("flag", 1, 'q')));
+  CHECK(isErr(setCmd("battType", 1)));
+  char cmd[24], err[64];
+  CHECK(!buildSetCommand("bulk", 28.0f, 0, "", "", "", cmd, sizeof cmd, err, sizeof err));   // nothing read yet
+  // 48 V inverter: ranges scale
+  const char* q48 = "230.0 21.7 230.0 50.0 21.7 5000 5000 48.0 46.0 42.0 56.4 54.0 2 30 60 0 2 1 9 01 0 0 54.0 0 1";
+  CHECK(buildSetCommand("bulk", 57.6f, 0, q48, "", "", cmd, sizeof cmd, err, sizeof err) && std::string(cmd) == "PCVV57.6");
+  CHECK(buildSetCommand("recharge", 47.0f, 0, q48, "", "", cmd, sizeof cmd, err, sizeof err) && std::string(cmd) == "PBCV47.0");
+  CHECK(!buildSetCommand("recharge", 46.5f, 0, q48, "", "", cmd, sizeof cmd, err, sizeof err));
+}
+
+static void testSetVerify() {
+  CHECK(setVerified("bulk", 27.2f, 0, REAL_QPIRI, ""));
+  CHECK(!setVerified("bulk", 28.2f, 0, REAL_QPIRI, ""));
+  CHECK(setVerified("maxChg", 50, 0, REAL_QPIRI, ""));
+  CHECK(setVerified("outPrio", 1, 0, REAL_QPIRI, ""));
+  CHECK(setVerified("redischarge", 26.5f, 0, REAL_QPIRI, ""));
+  CHECK(setVerified("flag", 1, 'a', REAL_QPIRI, "EakxyzDbdjuv"));
+  CHECK(setVerified("flag", 0, 'u', REAL_QPIRI, "EakxyzDbdjuv"));
+  CHECK(!setVerified("flag", 1, 'u', REAL_QPIRI, "EakxyzDbdjuv"));
+}
+
+static void testPI18() {
+  char cmd[16];
+  CHECK(pi18Command("GS", cmd, sizeof cmd) && std::string(cmd) == "^P005GS");
+  CHECK(pi18Command("PIRI", cmd, sizeof cmd) && std::string(cmd) == "^P007PIRI");
+  const char* gs = "2300,500,2300,500,0920,0880,018,512,000,000,000,012,100,035,040,000,1500,0000,3800,0000,0,2,0,1,1,0,1,0";
+  std::string fr = std::string("^D106") + gs;
+  uint16_t c = crcFix(crcRaw(0, (const uint8_t*)fr.data(), fr.size()));
+  fr.push_back((char)(c >> 8)); fr.push_back((char)(c & 0xFF));
+  char buf[256];
+  memcpy(buf, fr.data(), fr.size());
+  int n = pi18CheckReply(buf, fr.size());
+  CHECK(n == (int)strlen(gs));
+  Live L; char err[64];
+  CHECK(parsePI18GS(buf, L, err, sizeof err));
+  CHECK_NEAR(L.gridV, 230.0); CHECK_NEAR(L.battV, 51.2); CHECK(L.outW == 880); CHECK(L.battPct == 100);
+  CHECK(L.pvW == 1500); CHECK_NEAR(L.pvV, 380.0); CHECK_NEAR(L.chgA, 12); CHECK(L.battW == 614);
+  CHECK(L.gridOn); CHECK(strcmp(L.st, "00010010") == 0);
+  CHECK(pi18Mode("03") == 'B'); CHECK(pi18Mode("05") == 'L');
+  buf[0] = '^'; buf[1] = '0'; uint16_t c2 = crcFix(crcRaw(0, (const uint8_t*)"^0", 2)); buf[2] = (char)(c2 >> 8); buf[3] = (char)(c2 & 0xFF);
+  CHECK(pi18CheckReply(buf, 4) == REPLY_NAK);
+  CHECK(!parsePI18GS("1,2,3", L, err, sizeof err));
+  uint8_t mb[8];
+  CHECK(modbusRead(1, 3, 0x0000, 10, mb) == 8);
+  CHECK(mb[6] == 0xC5 && mb[7] == 0xCD);   // known frame 01 03 00 00 00 0A C5 CD
+  CHECK(modbusRead(1, 6, 0, 1, mb) == 0);  // writes are never built
+}
+
 int main() {
   testRequestCrc();
   testCrcNeverReservedBytes();
@@ -184,6 +271,9 @@ int main() {
   testParseRejectsGarbage();
   testGridEstimate();
   testHelpers();
+  testSetCommands();
+  testSetVerify();
+  testPI18();
   printf("%d checks, %d failures\n", checks, failures);
   return failures ? 1 : 0;
 }

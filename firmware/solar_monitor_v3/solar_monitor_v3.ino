@@ -49,6 +49,7 @@
 #include <ESPAsyncWebServer.h>
 #include "config.h"
 #include "inverter.h"
+#include "invset.h"
 #include "history.h"
 #include "web_index.h"
 #include "setup_page.h"
@@ -78,6 +79,20 @@ uint32_t histFrom = 0;   // oldest day with minute data
 
 // inverter info, refreshed rarely
 char qpiri[160] = "", qid[40] = "", qvfw[40] = "", qflag[40] = "";
+char chgCur[64] = "", acCur[64] = "";   // allowed max charge currents (QMCHGCR / QMUCHGCR)
+
+// a settings change waiting for the loop task: state 0 none, 1 waiting, 2 done ok, 3 failed
+struct SetJob {
+  uint32_t id = 0;
+  uint8_t state = 0;
+  char key[16] = "";
+  float value = 0;
+  char letter = 0;
+  char by[40] = "";
+  char msg[96] = "";
+} setJob;
+uint8_t probeState = 0;   // 0 never, 1 waiting, 2 done
+String probeText;
 
 // settings
 float setBattAh = 0, setTariff = 0;
@@ -200,27 +215,28 @@ static void buildLiveJsonLocked() {
 }
 
 static String buildInfoJson() {
-  char a[160], b[40], c[40], d[40], name[40], tz[40], ssid[40];
+  char a[160], b[40], c[40], d[40], name[40], tz[40], ssid[40], m1[64], m2[64];
   lock();
   jsonSafe(a, qpiri, sizeof(a)); jsonSafe(b, qid, sizeof(b));
   jsonSafe(c, qvfw, sizeof(c));  jsonSafe(d, qflag, sizeof(d));
+  jsonSafe(m1, chgCur, sizeof(m1)); jsonSafe(m2, acCur, sizeof(m2));
   jsonSafe(name, setName.c_str(), sizeof(name)); jsonSafe(tz, setTz.c_str(), sizeof(tz));
   uint32_t from = histFrom;
   unlock();
   jsonSafe(ssid, WiFi.SSID().c_str(), sizeof(ssid));
-  char buf[1100];
+  char buf[1400];
   snprintf(buf, sizeof(buf),
     "{\"fw\":\"%s\",\"board\":\"" FW_BOARD "\",\"histVer\":%d,\"name\":\"%s\",\"host\":\"%s\",\"ip\":\"%s\",\"mac\":\"%s\",\"ssid\":\"%s\",\"rssi\":%d,"
     "\"ap\":%s,\"uptime\":%lu,\"heap\":%lu,\"minHeap\":%lu,\"fsUsed\":%lu,\"fsTotal\":%lu,\"fsOk\":%s,"
     "\"timeOk\":%s,\"time\":%lu,\"tz\":\"%s\",\"clients\":%u,\"histFrom\":%lu,"
     "\"battAh\":%.1f,\"tariff\":%.2f,\"cycDay\":%d,\"cycHour\":%d,\"reset\":%d,"
-    "\"inv\":{\"qpiri\":\"%s\",\"qid\":\"%s\",\"qvfw\":\"%s\",\"qflag\":\"%s\"}}",
+    "\"inv\":{\"proto\":\"%s\",\"qpiri\":\"%s\",\"qid\":\"%s\",\"qvfw\":\"%s\",\"qflag\":\"%s\",\"chgCur\":\"%s\",\"acCur\":\"%s\"}}",
     FW_VERSION, HIST_VERSION, name, HOSTNAME, WiFi.localIP().toString().c_str(), WiFi.macAddress().c_str(), ssid,
     WiFi.RSSI(), apOn ? "true" : "false", (unsigned long)(millis() / 1000), (unsigned long)ESP.getFreeHeap(),
     (unsigned long)ESP.getMinFreeHeap(), fsOk ? (unsigned long)LittleFS.usedBytes() : 0UL,
     fsOk ? (unsigned long)LittleFS.totalBytes() : 0UL, fsOk ? "true" : "false",
     timeValid() ? "true" : "false", (unsigned long)time(nullptr), tz, (unsigned)events.count(), (unsigned long)from,
-    setBattAh, setTariff, setCycDay, setCycHour, (int)esp_reset_reason(), a, b, c, d);
+    setBattAh, setTariff, setCycDay, setCycHour, (int)esp_reset_reason(), protoName(invProto), a, b, c, d, m1, m2);
   return String(buf);
 }
 
@@ -445,40 +461,170 @@ static uint32_t fnv(const char* s, uint32_t h = 2166136261u) {
   return h;
 }
 
+// Ratings and settings (PI30). Also the allowed charge currents, so settings changes can be checked.
+static bool readRated() {
+  char r[160], a[40], b[40], c[40], m1[64], m2[64];
+  bool got = invQuery("QPIRI", r, sizeof(r)) > 0;
+  bool gotId = invQuery("QID", a, sizeof(a), 800) > 0;
+  bool gotFw = invQuery("QVFW", b, sizeof(b), 800) > 0;
+  bool gotFl = invQuery("QFLAG", c, sizeof(c), 800) > 0;
+  bool gotM1 = invQuery("QMCHGCR", m1, sizeof(m1), 800) > 0;
+  bool gotM2 = invQuery("QMUCHGCR", m2, sizeof(m2), 800) > 0;
+  lock();
+  if (got) strlcpy(qpiri, r, sizeof(qpiri));
+  if (gotId) strlcpy(qid, a, sizeof(qid));
+  if (gotFw) strlcpy(qvfw, b, sizeof(qvfw));
+  if (gotFl) strlcpy(qflag, c, sizeof(qflag));
+  if (gotM1) strlcpy(chgCur, m1, sizeof(chgCur));
+  if (gotM2) strlcpy(acCur, m2, sizeof(acCur));
+  unlock();
+  return got;
+}
+
+// ---------- changing a setting (runs in the loop task, which owns the serial link) ----------
+static void appendSetLog(const char* line) {
+  if (!fsOk) return;
+  File f = LittleFS.open("/setlog.txt", "r");
+  if (f && f.size() > 6000) {   // keep the newest half
+    String all = f.readString();
+    f.close();
+    int cut = all.indexOf('\n', all.length() / 2);
+    File w = LittleFS.open("/setlog.txt", "w");
+    if (w) { w.print(all.substring(cut + 1)); w.close(); }
+  } else if (f) f.close();
+  File a = LittleFS.open("/setlog.txt", "a");
+  if (a) { a.println(line); a.close(); }
+}
+
+static void runSetJob() {
+  SetJob j;
+  lock(); j = setJob; unlock();
+  char cmd[24], err[64], q[160], cl[64], al[64], fl[40];
+  lock(); strlcpy(q, qpiri, sizeof q); strlcpy(cl, chgCur, sizeof cl); strlcpy(al, acCur, sizeof al); strlcpy(fl, qflag, sizeof fl); unlock();
+  const char* state = "failed";
+  char msg[96] = "";
+  char oldV[16] = "";
+  int field = setKeyField(j.key);
+  if (field >= 0) { float o = qpiriField(q, field); snprintf(oldV, sizeof oldV, "%g", o); }
+  else if (field == -1) { const char* d = strchr(fl, 'D'); const char* l = strchr(fl, j.letter); snprintf(oldV, sizeof oldV, "%s", !d || !l ? "?" : l < d ? "on" : "off"); }
+  if (invProto != PROTO_PI30) {
+    snprintf(msg, sizeof msg, "changing settings is only supported on PI30 inverters");
+  } else if (!buildSetCommand(j.key, j.value, j.letter, q, cl, al, cmd, sizeof cmd, err, sizeof err)) {
+    snprintf(msg, sizeof msg, "not sent: %s", err);
+  } else {
+    char rep[16];
+    int r = invQuery(cmd, rep, sizeof rep, 3000);
+    if (r <= 0) snprintf(msg, sizeof msg, "inverter refused (%s)", invErr);
+    else if (strncmp(rep, "ACK", 3) != 0) snprintf(msg, sizeof msg, "inverter answered %s", rep);
+    else {
+      delay(300);
+      readRated();
+      lock(); strlcpy(q, qpiri, sizeof q); strlcpy(fl, qflag, sizeof fl); unlock();
+      if (setVerified(j.key, j.value, j.letter, q, fl)) { state = "ok"; snprintf(msg, sizeof msg, "saved and read back"); }
+      else snprintf(msg, sizeof msg, "inverter said OK but still shows the old value");
+    }
+  }
+  char newV[16];
+  if (field == -1) snprintf(newV, sizeof newV, "%s", j.value == 1 ? "on" : "off"); else snprintf(newV, sizeof newV, "%g", j.value);
+  char key[16];
+  if (field == -1) snprintf(key, sizeof key, "flag:%c", j.letter); else snprintf(key, sizeof key, "%s", j.key);
+  char line[260];
+  snprintf(line, sizeof line, "{\"t\":%lu,\"by\":\"%s\",\"k\":\"%s\",\"o\":\"%s\",\"n\":\"%s\",\"r\":\"%s\",\"m\":\"%s\"}",
+           (unsigned long)time(nullptr), j.by, key, oldV, newV, state, msg);
+  appendSetLog(line);
+  Serial.printf("Setting: %s\n", line);
+  lock();
+  setJob.state = strcmp(state, "ok") == 0 ? 2 : 3;
+  strlcpy(setJob.msg, msg, sizeof setJob.msg);
+  unlock();
+}
+
+// ---------- probe: read-only questions in every protocol we know, to learn how an unknown inverter talks ----------
+static void probeAppend(String& out, const char* label, const char* data, int n) {
+  out += label; out += ": ";
+  if (n < 0) { out += n == -1 ? "(no answer)\n" : "(cut off)\n"; return; }
+  for (int i = 0; i < n; i++) {
+    uint8_t c = (uint8_t)data[i];
+    if (c >= 32 && c < 127 && c != '\\') out += (char)c; else { char h[6]; snprintf(h, sizeof h, "\\x%02X", c); out += h; }
+  }
+  out += "\n";
+}
+
+static void runProbe() {
+  String out;
+  out.reserve(3000);
+  out += "Probe at "; out += (unsigned long)time(nullptr); out += ", current protocol "; out += protoName(invProto); out += "\n\n# PI30 (2400 baud)\n";
+  char buf[260];
+  static const char* pi30[] = {"QPI", "QID", "QVFW", "QVFW2", "QMN", "QGMN", "QPIRI", "QPIGS", "QPIGS2", "QMOD", "QPIWS", "QFLAG", "QMCHGCR", "QMUCHGCR", "QBEQI"};
+  for (const char* c : pi30) {
+    uint8_t fr[24]; size_t fl = buildRequest(c, fr, sizeof fr);
+    int n = invExchange(fr, fl, buf, sizeof buf, 1200, '(');
+    probeAppend(out, c, buf, n);
+    esp_task_wdt_reset();
+  }
+  out += "\n# PI18 (2400 baud)\n";
+  static const char* pi18[] = {"PI", "ID", "VFW", "MD", "PIRI", "GS", "MOD", "FWS", "FLAG"};
+  for (const char* c : pi18) {
+    char cmd[16]; pi18Command(c, cmd, sizeof cmd);
+    uint8_t fr[24]; size_t fl = buildRequest(cmd, fr, sizeof fr);
+    int n = invExchange(fr, fl, buf, sizeof buf, 1200, '^');
+    probeAppend(out, cmd, buf, n);
+    esp_task_wdt_reset();
+  }
+  // Modbus RTU: function 03/04 reads only (cannot change anything). Common register blocks of other brands.
+  struct { uint32_t baud; uint8_t fn; uint16_t reg; } mb[] = {
+    {9600, 3, 0x0100}, {9600, 3, 0x0200}, {9600, 3, 0x0000}, {9600, 4, 0x0000}, {19200, 3, 0x0000}, {2400, 3, 0x0000},
+  };
+  out += "\n# Modbus RTU, slave 1, 10 registers (hex)\n";
+  for (auto& m : mb) {
+    Serial1.updateBaudRate(m.baud);
+    delay(50);
+    uint8_t fr[8]; modbusRead(1, m.fn, m.reg, 10, fr);
+    int n = invExchange(fr, 8, buf, sizeof buf, 600, 0);
+    char label[40]; snprintf(label, sizeof label, "%lu fn%u reg 0x%04X", (unsigned long)m.baud, m.fn, m.reg);
+    out += label; out += ": ";
+    if (n <= 0) out += "(no answer)";
+    for (int i = 0; i < n; i++) { char h[4]; snprintf(h, sizeof h, "%02X ", (uint8_t)buf[i]); out += h; }
+    out += "\n";
+    esp_task_wdt_reset();
+  }
+  Serial1.updateBaudRate(2400);
+  delay(50);
+  lock(); probeText = out; probeState = 2; unlock();
+}
+
+static uint32_t failRun = 0;
+
 static void pollInverter() {
-  static char buf[200];
   uint32_t t0 = millis();
   Live L;
   lock(); L = live; unlock();
 
-  bool ok = invQuery("QPIGS", buf, sizeof(buf)) > 0 && parseQPIGS(buf, L);
-  uint32_t h = 0;
-  if (ok) {
-    h = fnv(buf);
-    char m[8];
-    if (invQuery("QMOD", m, sizeof(m), 800) > 0) L.mode = m[0];
-    if (cycleNo % 5 == 0) {
-      char w[48];
-      if (invQuery("QPIWS", w, sizeof(w), 800) > 0) strlcpy(L.warn, w, sizeof(L.warn));
+  if (setJob.state == 1) runSetJob();
+  if (probeState == 1) { runProbe(); invProto = PROTO_NONE; }
+  if (invProto == PROTO_NONE) {
+    static Proto lastProto = PROTO_NONE;
+    invProto = invDetect();
+    if (invProto != PROTO_NONE) {
+      Serial.printf("Inverter speaks %s\n", protoName(invProto));
+      refreshRated = true;
+      if (invProto != lastProto) {   // another inverter: forget the old one's settings
+        lock(); qpiri[0] = qid[0] = qvfw[0] = qflag[0] = chgCur[0] = acCur[0] = 0; unlock();
+        lastProto = invProto;
+      }
     }
+  }
+
+  uint32_t h = 0;
+  bool ok = invProto != PROTO_NONE && invReadLive(L, cycleNo % 5 == 0, h, fnv);
+  if (ok) {
+    failRun = 0;
     estimateGrid(L);
     h = fnv(L.warn, (h ^ (uint8_t)L.mode) * 16777619u);
-    if (refreshRated) {
-      char r[160], a[40], b[40], c[40];
-      bool got = invQuery("QPIRI", r, sizeof(r)) > 0;
-      bool gotId = invQuery("QID", a, sizeof(a), 800) > 0;
-      bool gotFw = invQuery("QVFW", b, sizeof(b), 800) > 0;
-      bool gotFl = invQuery("QFLAG", c, sizeof(c), 800) > 0;
-      lock();
-      if (got) strlcpy(qpiri, r, sizeof(qpiri));
-      if (gotId) strlcpy(qid, a, sizeof(qid));
-      if (gotFw) strlcpy(qvfw, b, sizeof(qvfw));
-      if (gotFl) strlcpy(qflag, c, sizeof(qflag));
-      unlock();
-      refreshRated = !got;   // retry next cycle if QPIRI failed
-    }
+    if (refreshRated) refreshRated = invProto == PROTO_PI30 ? !readRated() : false;   // retry next cycle if QPIRI failed
     commitSample(L);
   } else {
+    if (invProto != PROTO_NONE && ++failRun >= 10) { invProto = PROTO_NONE; failRun = 0; }   // moved to another inverter?
     lock();
     failCount++;
     buildLiveJsonLocked();
@@ -896,10 +1042,80 @@ static void setupWeb() {
     staUpAt = 0;
   });
 
-  server.on("/raw", HTTP_GET, [](AsyncWebServerRequest* r) {
-    char b[400];
+  // ---- inverter settings (password SET_PASS). The change itself runs in the loop task, the app polls the job. ----
+  auto setPassOk = [](AsyncWebServerRequest* r) -> bool {
+    if (param(r, "pw") == SET_PASS) return true;
+    r->send(401, "application/json", "{\"error\":\"wrong password\"}");   // no WWW-Authenticate: no browser pop-up
+    return false;
+  };
+  server.on("/api/inv/auth", HTTP_POST, [setPassOk](AsyncWebServerRequest* r) {
+    if (setPassOk(r)) sendJson(r, "{\"ok\":true}");
+  });
+  server.on("/api/inv/set", HTTP_POST, [setPassOk](AsyncWebServerRequest* r) {
+    if (!setPassOk(r)) return;
+    String key = param(r, "key"), val = param(r, "value"), letter = param(r, "letter"), by = param(r, "by");
+    char err[64], cmd[24], q[160], cl[64], al[64];
+    lock(); strlcpy(q, qpiri, sizeof q); strlcpy(cl, chgCur, sizeof cl); strlcpy(al, acCur, sizeof al); bool busy = setJob.state == 1; unlock();
+    if (busy) { r->send(409, "application/json", "{\"error\":\"another change is still running\"}"); return; }
+    // checked here too so the app gets the reason at once; checked again just before sending
+    if (!val.length() || !buildSetCommand(key.c_str(), val.toFloat(), letter.length() ? letter[0] : 0, q, cl, al, cmd, sizeof cmd, err, sizeof err)) {
+      char b[120]; snprintf(b, sizeof b, "{\"error\":\"%s\"}", val.length() ? err : "value missing");
+      r->send(400, "application/json", b);
+      return;
+    }
+    char who[40], safeBy[20];
+    jsonSafe(safeBy, by.c_str(), sizeof safeBy);
+    snprintf(who, sizeof who, "%s %s", safeBy, r->client() ? r->client()->remoteIP().toString().c_str() : "");
     lock();
-    snprintf(b, sizeof(b), "QPIRI: %s\nQID: %s\nQVFW: %s\nQFLAG: %s\nlast error: %s\n", qpiri, qid, qvfw, qflag, invErr);
+    setJob.id++;
+    strlcpy(setJob.key, key.c_str(), sizeof setJob.key);
+    setJob.value = val.toFloat();
+    setJob.letter = letter.length() ? letter[0] : 0;
+    strlcpy(setJob.by, who, sizeof setJob.by);
+    setJob.msg[0] = 0;
+    setJob.state = 1;
+    uint32_t id = setJob.id;
+    unlock();
+    sendJson(r, String("{\"id\":") + id + "}");
+  });
+  server.on("/api/inv/job", HTTP_GET, [](AsyncWebServerRequest* r) {
+    static const char* names[] = {"none", "waiting", "ok", "failed"};
+    char b[200], m[96];
+    lock(); jsonSafe(m, setJob.msg, sizeof m); snprintf(b, sizeof b, "{\"id\":%lu,\"state\":\"%s\",\"msg\":\"%s\"}", (unsigned long)setJob.id, names[setJob.state], m); unlock();
+    sendJson(r, b);
+  });
+  server.on("/api/inv/log", HTTP_GET, [](AsyncWebServerRequest* r) {
+    String s = "[";
+    File f = fsOk ? LittleFS.open("/setlog.txt", "r") : File();
+    if (f) {
+      bool first = true;
+      while (f.available()) {
+        String line = f.readStringUntil('\n');
+        line.trim();
+        if (!line.startsWith("{")) continue;
+        if (!first) s += ",";
+        s += line; first = false;
+      }
+      f.close();
+    }
+    s += "]";
+    sendJson(r, s);
+  });
+  server.on("/api/probe", HTTP_POST, [setPassOk](AsyncWebServerRequest* r) {
+    if (!setPassOk(r)) return;
+    lock(); if (probeState != 1) { probeState = 1; probeText = ""; } unlock();
+    sendJson(r, "{\"ok\":true}");
+  });
+  server.on("/api/probe", HTTP_GET, [](AsyncWebServerRequest* r) {
+    lock(); String s = String(probeState == 1 ? "state: running\n" : probeState == 2 ? "state: done\n" : "state: never run\n") + probeText; unlock();
+    r->send(200, "text/plain", s);
+  });
+
+  server.on("/raw", HTTP_GET, [](AsyncWebServerRequest* r) {
+    char b[600];
+    lock();
+    snprintf(b, sizeof(b), "Protocol: %s\nQPIRI: %s\nQID: %s\nQVFW: %s\nQFLAG: %s\nQMCHGCR: %s\nQMUCHGCR: %s\nlast error: %s\n",
+             protoName(invProto), qpiri, qid, qvfw, qflag, chgCur, acCur, invErr);
     unlock();
     r->send(200, "text/plain", b);
   });
