@@ -264,7 +264,7 @@ private fun AppRoot(repo: Repository) {
 private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.haze.HazeState, modifier: Modifier) {
     val cs = MaterialTheme.colorScheme
     val dark = cs.surface.luminance() < 0.5f
-    val tint = cs.surfaceContainer.copy(alpha = if (dark) 0.36f else 0.40f)   // more see-through; the blur keeps icons and labels readable
+    val tint = cs.surfaceContainer.copy(alpha = if (dark) 0.16f else 0.20f)   // mostly see-through: the page shows through, softened by the blur
     val shape = RoundedCornerShape(30.dp)
     Box(
         modifier
@@ -275,7 +275,7 @@ private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.
             .shadow(14.dp, shape, ambientColor = Color.Black.copy(alpha = 0.18f), spotColor = Color.Black.copy(alpha = 0.18f))
             .clip(shape)
             .hazeBlur(HazeInput.Sources(haze), HazeBlurStyle {
-                blurRadius(22.dp)
+                blurRadius(14.dp)
                 colorEffects(listOf(HazeColorEffect.tint(tint)))
                 fallbackColorEffect(HazeColorEffect.tint(cs.surfaceContainer.copy(alpha = 0.96f)))
             })
@@ -291,7 +291,7 @@ private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.
                 (itemW + gap) * tab.ordinal,
                 androidx.compose.animation.core.spring(dampingRatio = 0.72f, stiffness = 260f), label = "tabPill",
             )
-            Box(Modifier.offset(x = x).width(itemW).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(cs.secondaryContainer.copy(alpha = 0.72f)))
+            Box(Modifier.offset(x = x).width(itemW).fillMaxHeight().clip(RoundedCornerShape(24.dp)).background(cs.secondaryContainer.copy(alpha = 0.6f)))
         Row(Modifier.fillMaxWidth().height(60.dp), horizontalArrangement = Arrangement.spacedBy(gap)) {
             Tab.entries.forEach { t ->
                 val on = t == tab
