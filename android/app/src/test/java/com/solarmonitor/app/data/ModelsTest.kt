@@ -56,6 +56,9 @@ class ModelsTest {
         // bit 5 (grid lost) is shown separately, bit 9 = over temperature
         assertEquals(listOf(9), Decode.activeWarnings("000001000100000000000000000000000000"))
         assertEquals(emptyList<Int>(), Decode.activeWarnings(""))
+        // battery-less Galaxy Envy: battery bits are dropped
+        assertEquals(listOf(12, 21), Decode.activeWarnings("0000000000001100000001b00000000"))
+        assertEquals(emptyList<Int>(), Decode.activeWarnings("0000000000001100000001b00000000", noBattery = true))
         assertEquals("Buzzer, LCD backlight, Beep on grid loss, Fault code record", Decode.enabledFlags("EakxyzDbdjuv")?.replace("LCD back to home screen, ", ""))
         assertNull(Decode.enabledFlags("garbage"))
         assertEquals("Battery / Solar", Decode.modeName('B'))

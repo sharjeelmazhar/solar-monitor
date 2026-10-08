@@ -22,7 +22,8 @@ export default function OverviewPage({ dark }: { dark: boolean }) {
   const stale = useStale()
   const [, , idleW] = useBattIdle()
   const offline = !!d && stale != null
-  const alerts = d?.ever && !offline ? alertsOf(d, idleW) : []
+  const noBatt = rated?.battV === 0   // battery-less inverter (e.g. Galaxy Envy running on solar + grid only)
+  const alerts = d?.ever && !offline ? alertsOf(d, idleW, noBatt) : []
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
@@ -44,12 +45,12 @@ export default function OverviewPage({ dark }: { dark: boolean }) {
                 </Suspense>
               </div>
             )}
-            <div className="relative"><FlowDiagram d={d} ratedW={ratedW} still={offline} idleW={idleW} /></div>
+            <div className="relative"><FlowDiagram d={d} ratedW={ratedW} still={offline} idleW={idleW} noBatt={noBatt} /></div>
             </div>
           </div>
         </Card>
         <div className={cn('grid transition-[filter,opacity] duration-500', offline && 'opacity-45 grayscale')}>
-          <NowTiles d={d} info={info} battRatedV={rated?.battV} float={rated?.float} idleW={idleW} />
+          <NowTiles d={d} info={info} battRatedV={rated?.battV} float={rated?.float} idleW={idleW} noBatt={noBatt} />
         </div>
       </section>
 
@@ -76,7 +77,7 @@ function OfflineBadge({ seconds, t }: { seconds: number; t: number }) {
   )
 }
 
-function NowTiles({ d, info, battRatedV, float, idleW }: { d: Live | null; info: Info | null; battRatedV?: number; float?: number; idleW: number }) {
+function NowTiles({ d, info, battRatedV, float, idleW, noBatt }: { d: Live | null; info: Info | null; battRatedV?: number; float?: number; idleW: number; noBatt: boolean }) {
   if (!d?.ever) {
     return (
       <Card className="grid place-items-center text-sm text-text-2">
@@ -92,18 +93,24 @@ function NowTiles({ d, info, battRatedV, float, idleW }: { d: Live | null; info:
     <Card>
       <CardHeader title="Right now" sub={<LiveRate />} />
       <div className="grid grid-cols-2 gap-3">
-        <Tile tone="solar" label="Solar" value={fmtW(d.pvW)} lines={[`${d.pvV.toFixed(1)} V · ${d.pvA.toFixed(1)} A`, `Peak today ${fmtW(d.today.pvPeak)}`, sunLine()]} />
-        <Tile tone="batt" label="Battery" value={`${d.battPct} %`}
+        <Tile tone="solar" label="Solar" value={fmtW(d.pvW)} lines={[...pvLines(d), `Peak today ${fmtW(d.today.pvPeak)}`, sunLine()]} />
+        {noBatt ? <Tile tone="batt" label="Battery" value="None" small lines={['This inverter runs on solar', 'and grid only']} /> : <Tile tone="batt" label="Battery" value={`${d.battPct} %`}
           lines={[`${d.battV.toFixed(2)} V · ${Math.abs(battAmps(d)).toFixed(1)} A · ${bs === 'charging' ? 'charging ' + fmtW(d.battW) : bs === 'discharging' ? 'giving ' + fmtW(-d.battW) : 'idle'}`, eta ?? (info && !info.battAh ? 'Add battery Ah in System' : ' ')]}
-          bar={d.battPct} barTone={battTone} />
+          bar={d.battPct} barTone={battTone} />}
         <Tile tone="load" label="Home" value={fmtW(d.loadW)} lines={[`${d.loadPct}% load · ${d.loadVA} VA`, `${d.outV.toFixed(1)} V · ${d.outHz.toFixed(1)} Hz`]} bar={d.loadPct} />
         <Tile tone="grid" label="Grid (WAPDA)" value={d.gridOn ? `${Math.round(d.gridV)} V` : 'Off'}
           lines={d.gridOn ? [`${d.gridHz.toFixed(1)} Hz · available`, d.gridW > 15 ? `Importing ≈ ${fmtW(d.gridW)}` : 'Not in use'] : ['No grid supply', d.today.outages ? `${d.today.outages} outage${d.today.outages > 1 ? 's' : ''} today` : ' ']} />
         <Tile tone="inv" label="Inverter" value={`${d.tempC} °C`} lines={[sourcesSentence(d, idleW), `Mode: ${modeOf(d.mode).name} · DC bus ${d.busV} V`]} />
-        <Tile tone="text-3" label="Charging" value={charging} small lines={[bs === 'charging' ? `${fmtW(d.battW)} · ${battAmps(d).toFixed(1)} A into battery` : ' ', float ? `Float ${float} V` : ' ']} />
+        {noBatt ? <Tile tone="text-3" label="Charging" value="—" small lines={['No battery to charge', ' ']} /> : <Tile tone="text-3" label="Charging" value={charging} small lines={[bs === 'charging' ? `${fmtW(d.battW)} · ${battAmps(d).toFixed(1)} A into battery` : ' ', float ? `Float ${float} V` : ' ']} />}
       </div>
     </Card>
   )
+}
+
+/** One line per solar input: "PV1 166 V · 1.3 A" and "PV2 …" on two-input inverters. */
+function pvLines(d: Live): string[] {
+  if (!d.pv2V) return [`${d.pvV.toFixed(1)} V · ${d.pvA.toFixed(1)} A`]
+  return [`PV1 ${Math.round(d.pvV)} V · ${d.pvA.toFixed(1)} A · ${fmtW(d.pvV * d.pvA)}`, `PV2 ${Math.round(d.pv2V)} V · ${(d.pv2A ?? 0).toFixed(1)} A · ${fmtW(d.pv2V * (d.pv2A ?? 0))}`]
 }
 
 function Tile({ tone, label, value, lines, bar, barTone, small }: { tone: string; label: string; value: string; lines: string[]; bar?: number; barTone?: string; small?: boolean }) {
@@ -191,12 +198,12 @@ function LiveChart() {
 
 export interface AlertItem { level: 0 | 1 | 2; text: string }
 
-export function alertsOf(d: Live, idleW = 15): AlertItem[] {
+export function alertsOf(d: Live, idleW = 15, noBatt = false): AlertItem[] {
   const out: AlertItem[] = []
   if (!d.ok) out.push({ level: 2, text: `No fresh data from the inverter: ${d.poll.err || 'unknown reason'}` })
   if (d.mode === 'F') out.push({ level: 2, text: 'Inverter is in FAULT mode' })
-  for (const i of activeWarnings(d.warn)) out.push({ level: SEVERE.has(i) ? 2 : 1, text: WARNINGS[i] })
-  if (d.ok && d.battPct <= 20 && d.battW < 0) out.push({ level: 1, text: `Battery is low (${d.battPct}%)` })
+  for (const i of activeWarnings(d.warn, noBatt)) out.push({ level: SEVERE.has(i) ? 2 : 1, text: WARNINGS[i] })
+  if (d.ok && !noBatt && d.battPct <= 20 && d.battW < 0) out.push({ level: 1, text: `Battery is low (${d.battPct}%)` })
   if (d.tempC >= 60) out.push({ level: 1, text: `Inverter is hot (${d.tempC} °C)` })
   if (weakSolar(d, idleW)) out.push({ level: 1, text: `Little sun right now (cloudy?) and the battery is powering the home (${fmtW(-d.battW)}, battery ${d.battPct}%). Turn the grid on to save the battery.` })
   else if (!d.gridOn) {

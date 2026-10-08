@@ -22,10 +22,14 @@ export const WARNINGS: Record<number, string> = {
 }
 export const SEVERE = new Set([1, 2, 3, 4, 6, 9, 10, 11, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 27])
 
+/** Battery-related bits: meaningless on inverters that run without a battery (rated battery voltage 0). Bit 21 is
+ *  there too because battery-less models (Galaxy Envy) set it together with 12/13 when no battery is connected. */
+const BATT_BITS = new Set([11, 12, 13, 14, 21, 22, 24, 29])
+
 /** Active warning bits, without "grid not available" (shown as grid status instead). */
-export function activeWarnings(warn: string): number[] {
+export function activeWarnings(warn: string, noBattery = false): number[] {
   const out: number[] = []
-  for (let i = 0; i < warn.length; i++) if (warn[i] === '1' && WARNINGS[i] && i !== 5) out.push(i)
+  for (let i = 0; i < warn.length; i++) if (warn[i] === '1' && WARNINGS[i] && i !== 5 && !(noBattery && BATT_BITS.has(i))) out.push(i)
   return out
 }
 

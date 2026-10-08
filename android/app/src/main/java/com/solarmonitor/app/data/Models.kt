@@ -12,6 +12,7 @@ data class Live(
     val ever: Boolean,
     val mode: Char,
     val pvW: Int, val pvV: Double, val pvA: Double,
+    val pv2V: Double = 0.0, val pv2A: Double = 0.0,   // second solar input (two-MPPT models), 0 when absent
     val battV: Double, val battPct: Int, val chgA: Double, val dischgA: Double, val battW: Int,
     val loadW: Int, val loadVA: Int, val loadPct: Int, val outV: Double, val outHz: Double,
     val gridOn: Boolean, val gridV: Double, val gridHz: Double, val gridW: Int,
@@ -33,6 +34,7 @@ data class Live(
                 seq = j.optLong("seq"), t = j.optLong("t"), ok = j.optBoolean("ok"), ever = j.optBoolean("ever"),
                 mode = j.optString("mode", "?").firstOrNull() ?: '?',
                 pvW = j.optInt("pvW"), pvV = j.optDouble("pvV", 0.0), pvA = j.optDouble("pvA", 0.0),
+                pv2V = j.optDouble("pv2V", 0.0), pv2A = j.optDouble("pv2A", 0.0),
                 battV = j.optDouble("battV", 0.0), battPct = j.optInt("battPct"), chgA = j.optDouble("chgA", 0.0),
                 dischgA = j.optDouble("dischgA", 0.0), battW = j.optInt("battW"),
                 loadW = j.optInt("loadW"), loadVA = j.optInt("loadVA"), loadPct = j.optInt("loadPct"),
@@ -199,8 +201,13 @@ object Decode {
     )
     val severe = setOf(1, 2, 3, 4, 6, 9, 10, 11, 14, 16, 17, 18, 19, 20, 21, 22, 23, 24, 27)
 
+    /** Battery-related bits: meaningless on inverters that run without a battery (rated battery voltage 0). Bit 21 is
+     *  there too because battery-less models (Galaxy Envy) set it together with 12/13 when no battery is connected. */
+    private val battBits = setOf(11, 12, 13, 14, 21, 22, 24, 29)
+
     /** Active warning bits, excluding "grid not available" (shown separately). */
-    fun activeWarnings(warn: String): List<Int> = warn.indices.filter { warn[it] == '1' && it in warnings && it != 5 }
+    fun activeWarnings(warn: String, noBattery: Boolean = false): List<Int> =
+        warn.indices.filter { warn[it] == '1' && it in warnings && it != 5 && !(noBattery && it in battBits) }
 
     val battTypes = listOf("AGM", "Flooded", "User defined", "Pylontech (lithium)", "Shinheung (lithium)", "WECO (lithium)", "Soltaro (lithium)", "BAK (lithium)", "Lithium")
     val outPrio = listOf("Utility first (USB)", "Solar first (SUB)", "Solar → Battery → Utility (SBU)")

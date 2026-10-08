@@ -43,7 +43,7 @@ fun SystemScreen(repo: Repository, padding: PaddingValues, toast: (String) -> Un
     val ctx = LocalContext.current
 
     ScreenList(padding) {
-        d?.takeIf { it.ever }?.let { full("alerts") { AlertsCard(alertItems(it)) } }
+        d?.takeIf { it.ever }?.let { full("alerts") { AlertsCard(alertItems(it, noBatt = info?.rated?.battV == 0.0)) } }
         item(key = "inv") { androidx.compose.foundation.layout.Column { InverterSettingsCard(repo) } }
         item(key = "you") { YourSystemCard(repo, toast) }
         item(key = "look") { AppearanceCard(repo) }

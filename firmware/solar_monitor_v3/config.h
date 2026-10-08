@@ -3,7 +3,7 @@
 //  Solar Monitor v3 - settings you may want to change
 // ============================================================================
 
-#define FW_VERSION "3.5.0"
+#define FW_VERSION "3.5.1"
 
 // Network name: the dashboard is also reachable at http://solar.local/
 #define HOSTNAME "solar"

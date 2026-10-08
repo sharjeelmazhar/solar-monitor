@@ -191,7 +191,7 @@ static void buildLiveJsonLocked() {
   char mode[2] = {L.mode ? L.mode : '?', 0};
   snprintf(liveJson, sizeof(liveJson),
     "{\"seq\":%lu,\"t\":%.0f,\"ok\":%s,\"ever\":%s,\"age\":%lu,\"mode\":\"%s\","
-    "\"pvW\":%d,\"pvV\":%.1f,\"pvA\":%.1f,\"pvChgW\":%d,"
+    "\"pvW\":%d,\"pvV\":%.1f,\"pvA\":%.1f,\"pv2V\":%.1f,\"pv2A\":%.1f,\"pvChgW\":%d,"
     "\"battV\":%.2f,\"battVscc\":%.2f,\"battPct\":%d,\"chgA\":%.1f,\"dischgA\":%.1f,\"battW\":%d,"
     "\"loadW\":%d,\"loadVA\":%d,\"loadPct\":%d,\"outV\":%.1f,\"outHz\":%.1f,"
     "\"gridOn\":%s,\"gridV\":%.1f,\"gridHz\":%.1f,\"gridW\":%d,"
@@ -202,7 +202,7 @@ static void buildLiveJsonLocked() {
     "\"cyc\":{\"s\":%lu,\"f\":%lu,\"g\":%.1f,\"l\":%.1f,\"p\":%.1f,\"m\":%lu,\"ps\":%lu,\"pg\":%.1f,\"pm\":%lu}}",
     (unsigned long)seq, tms, fresh ? "true" : "false", everOk ? "true" : "false",
     everOk ? (unsigned long)(millis() - lastOkMs) : 0UL, mode,
-    L.pvW, L.pvV, L.pvA, L.pvChgW,
+    L.pvW, L.pvV, L.pvA, L.pv2V, L.pv2A, L.pvChgW,
     L.battV, L.battVscc, L.battPct, L.chgA, L.dischgA, L.battW,
     L.outW, L.outVA, L.loadPct, L.outV, L.outHz,
     L.gridOn ? "true" : "false", L.gridV, L.gridHz, L.gridW,

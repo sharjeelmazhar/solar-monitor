@@ -95,6 +95,9 @@ class Alerts(private val context: Context, private val prefs: Prefs) {
         ))
     }
 
+    /** True on battery-less inverters: battery alerts and battery warning bits are skipped. */
+    var noBattery: () -> Boolean = { false }
+
     fun onReading(prev: Live?, d: Live) {
         val s = prefs.value
         val now = System.currentTimeMillis()
@@ -116,7 +119,7 @@ class Alerts(private val context: Context, private val prefs: Prefs) {
         val p = lastOk
         lastOk = d
         if (p == null) {   // first good reading: just remember the state
-            activeWarn = Decode.activeWarnings(d.warn).toSet()
+            activeWarn = Decode.activeWarnings(d.warn, noBattery()).toSet()
             lowSent = d.battPct <= s.battLowPct
             fullSent = d.battPct >= 100
             _gridOff.value = !d.gridOn
@@ -140,14 +143,14 @@ class Alerts(private val context: Context, private val prefs: Prefs) {
         }
 
         val discharging = Power.batt(d, s.idleW) == Power.Batt.Discharging
-        if (s.alertBattLow) {
+        if (s.alertBattLow && !noBattery()) {
             if (!lowSent && d.battPct <= s.battLowPct && discharging) {
                 alert(ID_BATT, CH_BATTERY, R.drawable.ic_stat_battery, "Battery low: ${d.battPct}%",
                     "Giving ${-d.battW} W · ${String.format(java.util.Locale.US, "%.1f", -Power.battAmps(d))} A · ${d.battV} V${if (!d.gridOn) " · grid is off" else ""}", 60)
                 lowSent = true
             } else if (lowSent && d.battPct >= s.battLowPct + 5) lowSent = false
         }
-        if (s.alertBattFull) {
+        if (s.alertBattFull && !noBattery()) {
             if (!fullSent && d.battPct >= 100) { alert(ID_BATT, CH_BATTERY, R.drawable.ic_stat_battery, "Battery full", "Battery is at 100% (${d.battV} V)", 30); fullSent = true }
             else if (fullSent && d.battPct <= 95) fullSent = false
         }
@@ -169,7 +172,7 @@ class Alerts(private val context: Context, private val prefs: Prefs) {
             }
         }
 
-        val warn = Decode.activeWarnings(d.warn).toSet() + if (d.mode == 'F') setOf(1) else emptySet()
+        val warn = Decode.activeWarnings(d.warn, noBattery()).toSet() + if (d.mode == 'F') setOf(1) else emptySet()
         val fresh = warn - activeWarn
         activeWarn = warn
         if (s.alertFault && fresh.isNotEmpty()) {

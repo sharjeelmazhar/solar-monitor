@@ -100,6 +100,9 @@ describe('decode', () => {
   })
   it('decodes warnings and flags', () => {
     expect(activeWarnings('000001000100000000000000000000000000')).toEqual([9])
+    // battery-less Galaxy Envy: battery bits are dropped
+    expect(activeWarnings('0000000000001100000001b00000000', true)).toEqual([])
+    expect(activeWarnings('0000000000001100000001b00000000')).toEqual([12, 21])
     expect(parseFlags('EakxyzDbdjuv')?.on).toContain('Buzzer')
     expect(parseFlags('nonsense')).toBeNull()
   })

@@ -63,7 +63,7 @@ private class Flow(val path: Path) {
  * energy is moving, faster and denser with more power.
  */
 @Composable
-fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boolean = false, idleW: Int = 15) {
+fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boolean = false, idleW: Int = 15, noBatt: Boolean = false) {
     val idle by rememberUpdatedState(idleW)
     val e = LocalEnergy.current
     val cs = MaterialTheme.colorScheme
@@ -107,7 +107,7 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
         }
     }
 
-    val desc = d?.let { "Solar ${fmtW(it.pvW)}, home ${fmtW(it.loadW)}, battery ${it.battPct} percent, grid ${if (it.gridOn) "on" else "off"}" } ?: "Power flow"
+    val desc = d?.let { "Solar ${fmtW(it.pvW)}, home ${fmtW(it.loadW)}, ${if (noBatt) "no battery" else "battery ${it.battPct} percent"}, grid ${if (it.gridOn) "on" else "off"}" } ?: "Power flow"
     Canvas(modifier.fillMaxWidth().aspectRatio(VW / VH).semantics { contentDescription = desc }) {
         frame.longValue   // redraw every frame (draw phase only, no recomposition)
         val s = size.width / VW
@@ -160,7 +160,7 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
             translate(BATT.x, BATT.y) {
                 val fill = when { battPct <= 20 -> e.crit; battPct <= 45 -> e.warn; else -> e.batt }
                 val pulse = if (charging) 0.75f + 0.25f * sin(anim[1] * 2 * PI.toFloat() / 1.6f) else 1f
-                batteryIcon(cs.onSurfaceVariant, fill.copy(alpha = pulse), battPct / 100f, charging, cs.surfaceContainerLow)
+                batteryIcon(cs.onSurfaceVariant.copy(alpha = if (noBatt) 0.35f else 1f), fill.copy(alpha = if (noBatt) 0.2f else pulse), battPct / 100f, charging, cs.surfaceContainerLow)
             }
 
             ring(HOME, 32f, e.load, ok && (x?.loadW ?: 0) >= 8)
@@ -183,8 +183,8 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
             label("Solar", Offset(SOLAR.x, SOLAR.y + 46), false)
             label(if (x.gridOn) (if (x.gridW > 0) fmtW(x.gridW) else "${x.gridV.toInt()} V") else "Off", Offset(GRID.x, GRID.y - 48), true)
             label(if (x.gridOn) (if (x.gridW > 0) "Grid · in use" else "Grid · standby") else "Grid off", Offset(GRID.x, GRID.y + 46), false)
-            label("${x.battPct}%", Offset(BATT.x, BATT.y + 50), true)
-            label(when (Power.batt(x, idle)) { Power.Batt.Charging -> "Charging ${fmtW(x.battW)}"; Power.Batt.Discharging -> "Discharging ${fmtW(-x.battW)}"; else -> if (x.battPct >= 99) "Full" else "Idle" }, Offset(BATT.x, BATT.y - 46), false)
+            label(if (noBatt) "—" else "${x.battPct}%", Offset(BATT.x, BATT.y + 50), true)
+            if (noBatt) label("No battery", Offset(BATT.x, BATT.y - 46), false) else label(when (Power.batt(x, idle)) { Power.Batt.Charging -> "Charging ${fmtW(x.battW)}"; Power.Batt.Discharging -> "Discharging ${fmtW(-x.battW)}"; else -> if (x.battPct >= 99) "Full" else "Idle" }, Offset(BATT.x, BATT.y - 46), false)
             label(fmtW(x.loadW), Offset(HOME.x, HOME.y + 50), true)
             label("Home · ${x.loadPct}%", Offset(HOME.x, HOME.y - 46), false)
         }

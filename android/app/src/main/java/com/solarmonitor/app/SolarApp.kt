@@ -18,6 +18,7 @@ class SolarApp : Application() {
         repo = Repository(this, prefs)
         alerts = Alerts(this, prefs)
         alerts.createChannels()
+        alerts.noBattery = { repo.info.value?.rated?.battV == 0.0 }
         repo.onReading = alerts::onReading
     }
 }

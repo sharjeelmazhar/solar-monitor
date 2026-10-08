@@ -6,6 +6,7 @@ import { Button, Card, CardHeader, Segmented, Switch } from '../components/ui/ui
 import { dayLabel, fmtDuration } from '../lib/format'
 import { use3d, useBattIdle, useClock, webglAvailable, type Theme } from '../lib/prefs'
 import { API_BASE, saveSettings, useStore } from '../lib/store'
+import { parseRated } from '../lib/decode'
 import { Alerts, alertsOf } from './OverviewPage'
 
 function Row({ k, v, help }: { k: string; v: ReactNode; help?: string }) {
@@ -26,7 +27,7 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-      {d?.ever && <Alerts items={alertsOf(d)} />}
+      {d?.ever && <Alerts items={alertsOf(d, undefined, parseRated(info?.inv.qpiri)?.battV === 0)} />}
       <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <div className="flex flex-col gap-4 [&>*]:min-w-0 [&>*:last-child]:flex-1">
         <InverterSettings />

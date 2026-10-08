@@ -34,7 +34,7 @@ export function flowsOf(d: Live | null, idleW = DEADBAND): Record<Key, Flow> {
 }
 
 /** still: the monitor stopped answering, so nothing moves (the last values stay visible). */
-export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND }: { d: Live | null; ratedW: number; still?: boolean; idleW?: number }) {
+export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND, noBatt = false }: { d: Live | null; ratedW: number; still?: boolean; idleW?: number; noBatt?: boolean }) {
   const uid = useId().replace(/:/g, '')
   const flows = flowsOf(still ? null : d, idleW)
   const bs = d ? battState(d, idleW) : 'idle'
@@ -106,7 +106,7 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND }: { d:
   const ok = !!d?.ok && !still
   const solarFrac = d ? Math.min(1, d.pvW / ratedW) : 0
   const label = d?.ever
-    ? `Solar ${fmtW(d.pvW)}, home ${fmtW(d.loadW)}, battery ${d.battPct} percent ${bs}, grid ${d.gridOn ? 'on' : 'off'}`
+    ? `Solar ${fmtW(d.pvW)}, home ${fmtW(d.loadW)}, ${noBatt ? 'no battery' : `battery ${d.battPct} percent ${bs}`}, grid ${d.gridOn ? 'on' : 'off'}`
     : 'Power flow, waiting for data'
 
   const node = (k: 'solar' | 'grid' | 'batt' | 'home' | 'inv', active: boolean, color: string, r: number) => (
@@ -157,8 +157,10 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND }: { d:
         {d?.ever && !d.gridOn && <GridOffMark />}
       </g>
 
-      {node('batt', ok && flows.batt.w > 0, 'var(--batt)', 32)}
-      <g transform={`translate(${P.batt[0]} ${P.batt[1]})`}><BatteryIcon pct={d?.battPct ?? 0} charging={ok && bs === 'charging'} /></g>
+      <g opacity={noBatt ? 0.35 : 1}>
+        {node('batt', ok && flows.batt.w > 0, 'var(--batt)', 32)}
+        <g transform={`translate(${P.batt[0]} ${P.batt[1]})`}><BatteryIcon pct={d?.battPct ?? 0} charging={ok && bs === 'charging'} /></g>
+      </g>
 
       {node('home', ok && flows.home.w > 0, 'var(--load)', 32)}
       <g transform={`translate(${P.home[0]} ${P.home[1]})`}><HomeIcon id={`${uid}-home`} frac={d ? Math.max(d.loadW > 0 ? 0.06 : 0, d.loadPct / 100) : 0} /></g>
@@ -167,7 +169,7 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND }: { d:
         <g className="num" textAnchor="middle">
           <NodeText x={72} y={80 - 50} big={fmtW(d.pvW)} small="Solar" smallBelow={80 + 50} />
           <NodeText x={328} y={80 - 50} big={d.gridOn ? (d.gridW > DEADBAND ? fmtW(d.gridW) : `${Math.round(d.gridV)} V`) : 'Off'} small={d.gridOn ? (d.gridW > DEADBAND ? 'Grid · in use' : 'Grid · standby') : 'Grid off'} smallBelow={80 + 50} />
-          <NodeText x={72} y={230 + 58} big={`${d.battPct}%`} small={bs === 'charging' ? `Charging ${fmtW(d.battW)}` : bs === 'discharging' ? `Discharging ${fmtW(-d.battW)}` : d.battPct >= 99 ? 'Full' : 'Idle'} smallBelow={230 - 46} />
+          <NodeText x={72} y={230 + 58} big={noBatt ? '—' : `${d.battPct}%`} small={noBatt ? 'No battery' : bs === 'charging' ? `Charging ${fmtW(d.battW)}` : bs === 'discharging' ? `Discharging ${fmtW(-d.battW)}` : d.battPct >= 99 ? 'Full' : 'Idle'} smallBelow={230 - 46} />
           <NodeText x={328} y={230 + 58} big={fmtW(d.loadW)} small={`Home · ${d.loadPct}%`} smallBelow={230 - 46} />
         </g>
       )}

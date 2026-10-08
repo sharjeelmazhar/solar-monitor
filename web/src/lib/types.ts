@@ -38,6 +38,9 @@ export interface Live {
   pvW: number
   pvV: number
   pvA: number
+  /** second solar input (two-MPPT models), 0 when absent */
+  pv2V?: number
+  pv2A?: number
   pvChgW: number
   battV: number
   battPct: number

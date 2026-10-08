@@ -14,6 +14,7 @@
 
 struct Live {
   float gridV = 0, gridHz = 0, outV = 0, outHz = 0, battV = 0, battVscc = 0, chgA = 0, dischgA = 0, pvV = 0, pvA = 0;
+  float pv2V = 0, pv2A = 0;   // second solar input (two-MPPT models such as the Galaxy Envy 9000), else 0
   int busV = 0, outVA = 0, outW = 0, loadPct = 0, battPct = 0, tempC = 0, pvW = 0, pvChgW = 0;
   int battW = 0;        // + charging, - discharging
   int gridW = 0;        // estimated power taken from the grid
@@ -73,9 +74,12 @@ inline int checkReply(char* buf, size_t n) {
   n -= 2;
   uint16_t want = crcRaw(crcRaw(0, (const uint8_t*)"(", 1), (const uint8_t*)buf, n);
   if (got != crcFix(want) && got != want) return REPLY_CRC;   // accept both CRC variants seen in the wild
-  buf[n] = 0;
+  // Some models (Galaxy Envy) pad numbers with NUL bytes ("0446\0 0434\0"): drop them so the text parses.
+  size_t j = 0;
+  for (size_t i = 0; i < n; i++) if (buf[i]) buf[j++] = buf[i];
+  buf[j] = 0;
   if (strncmp(buf, "NAK", 3) == 0) return REPLY_NAK;
-  return (int)n;
+  return (int)j;
 }
 
 inline bool isNum(const char* s) {
@@ -122,13 +126,27 @@ inline bool parseQPIGS(const char* payload, Live& L, char* err, size_t errCap) {
   o.battPct = pct < 0 ? 0 : pct > 100 ? 100 : pct;
   o.tempC = atoi(f[11]);
   o.pvA   = atof(f[12]); o.pvV    = atof(f[13]);
-  o.battVscc = atof(f[14]);
-  o.dischgA = atof(f[15]);
-  pi30Copy(o.st, f[16], sizeof(o.st));
-  o.pvChgW = (n > 19 && isNum(f[19])) ? atoi(f[19]) : 0;
-  pi30Copy(o.st2, (n > 20) ? f[20] : "", sizeof(o.st2));
-  // PV power: field 19 when the model reports it, else V x A
-  o.pvW = o.pvChgW > 0 ? o.pvChgW : (int)(o.pvA * o.pvV + 0.5f);
+  // Two-input layout (Galaxy Envy 9000): PV2 A, PV2 V, SCC V and one unknown value come before the discharge
+  // current, so the 8-bit status sits at 19 instead of 16.
+  bool twoPv = n >= 24 && strlen(f[19]) == 8 && strlen(f[16]) != 8;
+  if (twoPv) {
+    o.pv2A = atof(f[14]); o.pv2V = atof(f[15]);
+    o.battVscc = atof(f[16]);
+    o.dischgA = atof(f[18]);
+    pi30Copy(o.st, f[19], sizeof(o.st));
+    o.pvChgW = 0;   // field 22 is not PV watts on this model (it reads far above V x A)
+    pi30Copy(o.st2, f[23], sizeof(o.st2));
+    o.pvW = (int)(o.pvA * o.pvV + o.pv2A * o.pv2V + 0.5f);
+  } else {
+    o.pv2A = 0; o.pv2V = 0;
+    o.battVscc = atof(f[14]);
+    o.dischgA = atof(f[15]);
+    pi30Copy(o.st, f[16], sizeof(o.st));
+    o.pvChgW = (n > 19 && isNum(f[19])) ? atoi(f[19]) : 0;
+    pi30Copy(o.st2, (n > 20) ? f[20] : "", sizeof(o.st2));
+    // PV power: field 19 when the model reports it, else V x A
+    o.pvW = o.pvChgW > 0 ? o.pvChgW : (int)(o.pvA * o.pvV + 0.5f);
+  }
   o.battW = (int)lroundf(o.battV * (o.chgA - o.dischgA));
   o.gridOn = o.gridV > 90.0f;
   L = o;

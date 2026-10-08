@@ -296,8 +296,44 @@ static void testPI18() {
   CHECK(modbusRead(1, 6, 0, 1, mb) == 0);  // writes are never built
 }
 
+// Galaxy Envy 9000 (two solar inputs, no battery): numbers padded with NUL bytes, 24 fields.
+static void testGalaxyTwoPv() {
+  static const char raw[] =
+    "002.8 48.2 229.3 50.0 0449\0 0436\0 007\0 415\0 00.00 000\0 000\0 033\0 01.5 172.1 01.7 349.0 00.1 003.5 "
+    "00000\0 00010010 00\0 00\0 02720\0 010";
+  std::string payload(raw, sizeof raw - 1);
+  uint16_t c = crcFix(crcRaw(crcRaw(0, (const uint8_t*)"(", 1), (const uint8_t*)payload.data(), payload.size()));
+  std::string s = payload;
+  s.push_back((char)(c >> 8));
+  s.push_back((char)(c & 0xFF));
+  char buf[256];
+  int n = check(s, buf);
+  CHECK(n > 0 && (size_t)n == strlen(buf));
+  CHECK(strstr(buf, "0449 0436 007") != nullptr);
+  Live L;
+  char err[64];
+  CHECK(parseQPIGS(buf, L, err, sizeof err));
+  CHECK_NEAR(L.outV, 229.3);
+  CHECK(L.outW == 436);
+  CHECK(L.loadPct == 7);
+  CHECK_NEAR(L.battV, 0.0);
+  CHECK_NEAR(L.pvA, 1.5);
+  CHECK_NEAR(L.pvV, 172.1);
+  CHECK_NEAR(L.pv2A, 1.7);
+  CHECK_NEAR(L.pv2V, 349.0);
+  CHECK(L.pvW == (int)(1.5f * 172.1f + 1.7f * 349.0f + 0.5f));
+  CHECK(strcmp(L.st, "00010010") == 0);
+  CHECK(strcmp(L.st2, "010") == 0);
+  CHECK(!L.gridOn);
+  // the one-input layout keeps PV2 at zero
+  CHECK(parseQPIGS(REAL_QPIGS, L, err, sizeof err));
+  CHECK_NEAR(L.pv2V, 0.0);
+  CHECK(strcmp(L.st, "00010000") == 0);
+}
+
 int main() {
   testRequestCrc();
+  testGalaxyTwoPv();
   testCrcNeverReservedBytes();
   testCheckReply();
   testParseRealQpigs();

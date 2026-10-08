@@ -99,7 +99,7 @@ fun LiveScreen(repo: Repository, padding: PaddingValues, wide: Boolean) {
                     val fade = if (!offline) Modifier else Modifier.alpha(0.35f).then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(2.dp) else Modifier)
                     val cur = d
                     if (s.fx3d && !offline && cur != null && cur.ok) EnergyCore3D(cur, rated?.outW?.takeIf { it > 0 } ?: 3200, Modifier.fillMaxWidth(0.62f).alpha(0.8f).then(fade))
-                    PowerFlow(d, rated?.outW?.takeIf { it > 0 } ?: 3200, Modifier.padding(vertical = 4.dp).then(fade), still = offline, idleW = idleW)
+                    PowerFlow(d, rated?.outW?.takeIf { it > 0 } ?: 3200, Modifier.padding(vertical = 4.dp).then(fade), still = offline, idleW = idleW, noBatt = rated?.battV == 0.0)
                     if (offline) OfflineBadge(stale!!, d!!.t)
                 }
             }
@@ -109,7 +109,7 @@ fun LiveScreen(repo: Repository, padding: PaddingValues, wide: Boolean) {
             full("wait") { SectionCard(null) { Text(if (x == null) "Connecting to the solar monitor…" else "Waiting for the inverter…", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
             return@ScreenList
         }
-        val alerts = if (offline) emptyList() else alertItems(x, idleW)
+        val alerts = if (offline) emptyList() else alertItems(x, idleW, info?.rated?.battV == 0.0)
         if (alerts.any { it.first > 0 }) full("alerts") { AlertsCard(alerts.filter { it.first > 0 }) }
         full("now") { Box(if (offline) Modifier.alpha(0.45f) else Modifier) { NowCard(x, info, e, 2, idleW, repo) } }
         item(key = "today") { TodayCard(x, info) }
@@ -139,13 +139,15 @@ private fun OfflineBadge(staleMs: Long, t: Long) {
 private fun NowCard(d: Live, info: Info?, e: EnergyColors, cols: Int, idleW: Int, repo: Repository) {
     val bs = Power.batt(d, idleW)
     val rated = info?.rated
+    val noBatt = rated?.battV == 0.0   // battery-less inverter (e.g. Galaxy Envy on solar + grid only)
     val battFill = when { d.battPct <= 20 -> e.crit; d.battPct <= 45 -> e.warn; else -> e.batt }
     val interval by repo.updateInterval.collectAsStateWithLifecycle()
     SectionCard("Right now", sub = if (interval > 0) "updating every ${fmt1(interval / 1000.0)} s" else "live") {
         Grid(cols, listOf(
-            { m -> KpiTile("Solar", e.solar, fmtW(d.pvW), "${fmt1(d.pvV)} V · ${fmt1(d.pvA)} A", "Peak today ${fmtW(d.today.pvPeak)}\n" + Sun.times().let { "Sunrise ${hhmm(it.rise)} · Sunset ${hhmm(it.set)}" }, m) },
+            { m -> KpiTile("Solar", e.solar, fmtW(d.pvW), pvLine(d), (if (d.pv2V > 0) pv2Line(d) + "\n" else "") + "Peak today ${fmtW(d.today.pvPeak)}\n" + Sun.times().let { "Sunrise ${hhmm(it.rise)} · Sunset ${hhmm(it.set)}" }, m) },
             { m ->
-                KpiTile("Battery", e.batt, "${d.battPct} %",
+                if (noBatt) KpiTile("Battery", e.batt, "None", "This inverter runs on solar", "and grid only", m, smallValue = true)
+                else KpiTile("Battery", e.batt, "${d.battPct} %",
                     "${fmt2(d.battV)} V · ${fmt1(kotlin.math.abs(Power.battAmps(d)))} A · " + when (bs) { Power.Batt.Charging -> "charging ${fmtW(d.battW)}"; Power.Batt.Discharging -> "giving ${fmtW(-d.battW)}"; else -> "idle" },
                     battEta(d, info, rated?.battV) ?: if ((info?.battAh ?: 0.0) == 0.0) "Add battery Ah in System" else " ",
                     m, progress = d.battPct / 100f, progressColor = battFill)
@@ -157,7 +159,8 @@ private fun NowCard(d: Live, info: Info?, e: EnergyColors, cols: Int, idleW: Int
             },
             { m -> KpiTile("Inverter", e.inv, "${d.tempC} °C", Power.sentence(d, idleW), "Mode: ${Decode.modeName(d.mode)} · DC bus ${d.busV} V", m) },
             { m ->
-                KpiTile("Charging", MaterialTheme.colorScheme.outline,
+                if (noBatt) KpiTile("Charging", MaterialTheme.colorScheme.outline, "—", "No battery to charge", " ", m, smallValue = true)
+                else KpiTile("Charging", MaterialTheme.colorScheme.outline,
                     when { d.solarCharging && d.gridCharging -> "Solar + grid"; d.solarCharging -> "From solar"; d.gridCharging -> "From grid"; else -> "Not charging" },
                     if (bs == Power.Batt.Charging) "${fmtW(d.battW)} · ${fmt1(Power.battAmps(d))} A into battery" else "",
                     rated?.let { "Float ${it.float} V" } ?: " ", m, smallValue = true)
@@ -165,6 +168,10 @@ private fun NowCard(d: Live, info: Info?, e: EnergyColors, cols: Int, idleW: Int
         ))
     }
 }
+
+/** "166.1 V · 1.3 A", or per input on two-input inverters: "PV1 166 V · 1.3 A · 216 W". */
+private fun pvLine(d: Live) = if (d.pv2V > 0) "PV1 ${d.pvV.roundToInt()} V · ${fmt1(d.pvA)} A · ${fmtW((d.pvV * d.pvA).roundToInt())}" else "${fmt1(d.pvV)} V · ${fmt1(d.pvA)} A"
+private fun pv2Line(d: Live) = "PV2 ${d.pv2V.roundToInt()} V · ${fmt1(d.pv2A)} A · ${fmtW((d.pv2V * d.pv2A).roundToInt())}"
 
 private fun battEta(d: Live, info: Info?, ratedV: Double?): String? {
     val ah = info?.battAh ?: return null
@@ -225,12 +232,12 @@ private fun LiveChartCard(repo: Repository, e: EnergyColors) {
 }
 
 /** (severity 0 info, 1 warning, 2 problem, -1 all-good) to text */
-fun alertItems(d: Live, idleW: Int = Power.DEADBAND): List<Pair<Int, String>> {
+fun alertItems(d: Live, idleW: Int = Power.DEADBAND, noBatt: Boolean = false): List<Pair<Int, String>> {
     val out = mutableListOf<Pair<Int, String>>()
     if (!d.ok) out += 2 to "No fresh data from inverter: ${d.err.ifEmpty { "unknown" }}"
     if (d.mode == 'F') out += 2 to "Inverter is in FAULT mode"
-    Decode.activeWarnings(d.warn).forEach { out += (if (it in Decode.severe) 2 else 1) to (Decode.warnings[it] ?: "Warning $it") }
-    if (d.ok && d.battPct <= 20 && d.battW < 0) out += 1 to "Battery is low (${d.battPct}%)"
+    Decode.activeWarnings(d.warn, noBatt).forEach { out += (if (it in Decode.severe) 2 else 1) to (Decode.warnings[it] ?: "Warning $it") }
+    if (d.ok && !noBatt && d.battPct <= 20 && d.battW < 0) out += 1 to "Battery is low (${d.battPct}%)"
     if (d.tempC >= 60) out += 1 to "Inverter is hot (${d.tempC} °C)"
     if (Power.weakSolar(d, idleW)) out += 1 to "Little sun right now (cloudy?) and the battery is powering the home (${fmtW(-d.battW)}, battery ${d.battPct}%). Turn the grid on to save the battery."
     else if (!d.gridOn) {
