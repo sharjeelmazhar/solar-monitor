@@ -44,6 +44,7 @@ import kotlin.math.sqrt
 // Geometry in a 400 x 292 design space (same as the web dashboard)
 private const val VW = 400f
 private const val VH = 292f
+private const val DIM = 0.35f   // opacity of a part that is not available (night solar, grid off, no battery), as on the web
 private val SOLAR = Offset(72f, 78f)
 private val GRID = Offset(328f, 78f)
 private val INV = Offset(200f, 150f)
@@ -72,10 +73,12 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
     val frozen by rememberUpdatedState(still)   // monitor offline: nothing moves, last values stay
     val flows = remember {
         listOf(
-            Flow(curve(SOLAR, Offset(140f, 78f), Offset(200f, 100f), INV)),
-            Flow(curve(GRID, Offset(260f, 78f), Offset(200f, 100f), INV)),
-            Flow(curve(BATT, Offset(140f, 222f), Offset(200f, 200f), INV)),
-            Flow(curve(INV, Offset(200f, 200f), Offset(260f, 222f), HOME)),
+            // lines start and end on the circles' edges (outer r 32, inverter r 29), never inside them,
+            // so a faded node (no battery, night, grid off) doesn't show a line running into it (same as the web)
+            Flow(curve(Offset(104f, 78f), Offset(160f, 78f), Offset(200f, 98f), Offset(200f, 121f))),
+            Flow(curve(Offset(296f, 78f), Offset(240f, 78f), Offset(200f, 98f), Offset(200f, 121f))),
+            Flow(curve(Offset(104f, 222f), Offset(160f, 222f), Offset(200f, 202f), Offset(200f, 179f))),
+            Flow(curve(Offset(200f, 179f), Offset(200f, 202f), Offset(240f, 222f), Offset(296f, 222f))),
         )
     }
     val frame = remember { mutableLongStateOf(0L) }
@@ -117,12 +120,25 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
         val lineBase = cs.outlineVariant
         val colors = listOf(e.solar, e.grid, e.batt, e.load)
         val reverse = listOf(false, false, (x?.battW ?: 0) > 0, false)
+        // parts that are not available right now are faded, line included (they stay drawn: they are wired up)
+        val dim = listOf(
+            x?.ever == true && x.pvW < 15 && com.solarmonitor.app.data.Sun.phase() == com.solarmonitor.app.data.Sun.Phase.Night,
+            x?.ever == true && !x.gridOn,
+            noBatt,
+            false,
+        )
+        fun faded(on: Boolean, c: Offset, r: Float, block: () -> Unit) {
+            if (!on) return block()
+            drawContext.canvas.saveLayer(androidx.compose.ui.geometry.Rect(c, r + 4f), androidx.compose.ui.graphics.Paint().apply { alpha = DIM })
+            block()
+            drawContext.canvas.restore()
+        }
 
         withTransform({ scale(s, s, Offset.Zero) }) {
             // lines
             flows.forEachIndexed { i, f ->
                 val active = ws[i] > 0
-                drawPath(f.path, if (active) lerp(lineBase, colors[i], 0.42f) else lineBase, style = Stroke(4f, cap = StrokeCap.Round))
+                drawPath(f.path, if (active) lerp(lineBase, colors[i], 0.42f) else lineBase, alpha = if (dim[i]) DIM else 1f, style = Stroke(4f, cap = StrokeCap.Round))
             }
             // particles
             flows.forEachIndexed { i, f ->
@@ -146,21 +162,27 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
             ring(INV, 29f, e.inv, ok)
             translate(INV.x, INV.y) { inverterIcon(e.inv) }
 
-            ring(SOLAR, 32f, e.solar, ok && (x?.pvW ?: 0) >= 8)
-            translate(SOLAR.x, SOLAR.y) { sunIcon(e.solar, anim[0]) }
+            faded(dim[0], SOLAR, 32f) {
+                ring(SOLAR, 32f, e.solar, ok && (x?.pvW ?: 0) >= 8)
+                translate(SOLAR.x, SOLAR.y) { sunIcon(e.solar, anim[0]) }
+            }
 
             val gridOn = x?.gridOn == true
-            ring(GRID, 32f, e.grid, gridOn)
-            translate(GRID.x, GRID.y) { pylonIcon(e.grid, if (x == null || gridOn) 1f else 0.35f); if (x != null && !gridOn) drawLine(e.crit, Offset(-19f, 19f), Offset(19f, -19f), 3f, StrokeCap.Round) }
+            faded(dim[1], GRID, 32f) {
+                ring(GRID, 32f, e.grid, gridOn)
+                translate(GRID.x, GRID.y) { pylonIcon(e.grid, if (x == null || gridOn) 1f else 0.35f); if (x != null && !gridOn) drawLine(e.crit, Offset(-19f, 19f), Offset(19f, -19f), 3f, StrokeCap.Round) }
+            }
 
             val battPct = x?.battPct ?: 0
             val bs = x?.let { Power.batt(it, idle) } ?: Power.Batt.Idle
             val charging = ok && bs == Power.Batt.Charging
+            faded(dim[2], BATT, 32f) {
             ring(BATT, 32f, e.batt, ok && bs != Power.Batt.Idle)
             translate(BATT.x, BATT.y) {
                 val fill = when { battPct <= 20 -> e.crit; battPct <= 45 -> e.warn; else -> e.batt }
                 val pulse = if (charging) 0.75f + 0.25f * sin(anim[1] * 2 * PI.toFloat() / 1.6f) else 1f
-                batteryIcon(cs.onSurfaceVariant.copy(alpha = if (noBatt) 0.35f else 1f), fill.copy(alpha = if (noBatt) 0.2f else pulse), battPct / 100f, charging, cs.surfaceContainerLow)
+                batteryIcon(cs.onSurfaceVariant, fill.copy(alpha = if (noBatt) 0.5f else pulse), battPct / 100f, charging, cs.surfaceContainerLow)
+            }
             }
 
             ring(HOME, 32f, e.load, ok && (x?.loadW ?: 0) >= 8)

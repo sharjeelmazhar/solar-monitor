@@ -1,21 +1,25 @@
 import { useEffect, useId, useRef } from 'react'
 import { fmtW } from '../../lib/format'
 import { battState } from '../../lib/power'
+import { sunPhase } from '../../lib/sun'
 import type { Live } from '../../lib/types'
 import { BatteryIcon, GridIcon, GridOffMark, HomeIcon, InverterIcon, SolarIcon } from '../icons/EnergyIcons'
 
 // Design space 400 x 310; the SVG scales to its container.
 const P = { solar: [72, 80], grid: [328, 80], inv: [200, 155], batt: [72, 230], home: [328, 230] } as const
+// Lines start and end on the circles' edges (outer nodes r 32, inverter r 29), never inside them,
+// so a faded node (no battery, night, grid off) doesn't show a line running into it.
 const PATHS = {
-  solar: `M72 80 C 140 80, 200 104, 200 155`,
-  grid: `M328 80 C 260 80, 200 104, 200 155`,
-  batt: `M72 230 C 140 230, 200 206, 200 155`,
-  home: `M200 155 C 200 206, 260 230, 328 230`,
+  solar: `M104 80 C 160 80, 200 100, 200 126`,
+  grid: `M296 80 C 240 80, 200 100, 200 126`,
+  batt: `M104 230 C 160 230, 200 210, 200 184`,
+  home: `M200 184 C 200 210, 240 230, 296 230`,
 }
 type Key = keyof typeof PATHS
 const COLORS: Record<Key, string> = { solar: 'var(--solar)', grid: 'var(--grid)', batt: 'var(--batt)', home: 'var(--load)' }
 const DEADBAND = 15 // W: smaller flows are shown as idle so lines don't flicker
 const MAX_DOTS = 7
+const DIM = 0.35 // opacity of a part that is not available (night solar, grid off, no battery)
 
 interface Flow { w: number; reverse: boolean }
 
@@ -104,6 +108,13 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND, noBatt
   }, [])
 
   const ok = !!d?.ok && !still
+  // Parts that are not available right now are faded, line included (they stay drawn: they are wired up).
+  const dim: Record<Key, boolean> = {
+    solar: !!d?.ever && d.pvW < DEADBAND && sunPhase(d.t ? new Date(d.t) : new Date()) === 'night',
+    grid: !!d?.ever && !d.gridOn,
+    batt: noBatt,
+    home: false,
+  }
   const solarFrac = d ? Math.min(1, d.pvW / ratedW) : 0
   const label = d?.ever
     ? `Solar ${fmtW(d.pvW)}, home ${fmtW(d.loadW)}, ${noBatt ? 'no battery' : `battery ${d.battPct} percent ${bs}`}, grid ${d.gridOn ? 'on' : 'off'}`
@@ -129,9 +140,9 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND, noBatt
       </defs>
 
       {(Object.keys(PATHS) as Key[]).map((k) => (
-        <path key={k} ref={(el) => { if (el) pathRefs.current[k] = el }} d={PATHS[k]} fill="none" strokeLinecap="round"
+        <path key={k} ref={(el) => { if (el) pathRefs.current[k] = el }} d={PATHS[k]} fill="none" strokeLinecap="round" opacity={dim[k] ? DIM : 1}
           stroke={flows[k].w ? COLORS[k] : 'var(--border-strong)'} strokeOpacity={flows[k].w ? 0.38 : 1} strokeWidth={lineWidth(k)}
-          style={{ transition: 'stroke-width .6s, stroke .5s' }} />
+          style={{ transition: 'stroke-width .6s, stroke .5s, opacity .6s' }} />
       ))}
 
       {(Object.keys(PATHS) as Key[]).map((k) => (
@@ -148,16 +159,20 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND, noBatt
       {node('inv', ok, 'var(--inv)', 29)}
       <g transform={`translate(${P.inv[0]} ${P.inv[1]})`}><InverterIcon active={ok} /></g>
 
-      {node('solar', ok && flows.solar.w > 0, 'var(--solar)', 32)}
-      <g transform={`translate(${P.solar[0]} ${P.solar[1]})`}><SolarIcon intensity={ok ? solarFrac : 0} spinS={ok && flows.solar.w ? 26 - 22 * solarFrac : 0} /></g>
-
-      {node('grid', !!d?.gridOn, 'var(--grid)', 32)}
-      <g transform={`translate(${P.grid[0]} ${P.grid[1]})`}>
-        <GridIcon on={!d || d.gridOn} importing={ok && flows.grid.w > 0} />
-        {d?.ever && !d.gridOn && <GridOffMark />}
+      <g opacity={dim.solar ? DIM : 1} style={{ transition: 'opacity .6s' }}>
+        {node('solar', ok && flows.solar.w > 0, 'var(--solar)', 32)}
+        <g transform={`translate(${P.solar[0]} ${P.solar[1]})`}><SolarIcon intensity={ok ? solarFrac : 0} spinS={ok && flows.solar.w ? 26 - 22 * solarFrac : 0} /></g>
       </g>
 
-      <g opacity={noBatt ? 0.35 : 1}>
+      <g opacity={dim.grid ? DIM : 1} style={{ transition: 'opacity .6s' }}>
+        {node('grid', !!d?.gridOn, 'var(--grid)', 32)}
+        <g transform={`translate(${P.grid[0]} ${P.grid[1]})`}>
+          <GridIcon on={!d || d.gridOn} importing={ok && flows.grid.w > 0} />
+          {d?.ever && !d.gridOn && <GridOffMark />}
+        </g>
+      </g>
+
+      <g opacity={dim.batt ? DIM : 1} style={{ transition: 'opacity .6s' }}>
         {node('batt', ok && flows.batt.w > 0, 'var(--batt)', 32)}
         <g transform={`translate(${P.batt[0]} ${P.batt[1]})`}><BatteryIcon pct={d?.battPct ?? 0} charging={ok && bs === 'charging'} /></g>
       </g>

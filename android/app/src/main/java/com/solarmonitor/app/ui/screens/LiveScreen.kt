@@ -234,7 +234,7 @@ private fun LiveChartCard(repo: Repository, e: EnergyColors) {
 /** (severity 0 info, 1 warning, 2 problem, -1 all-good) to text */
 fun alertItems(d: Live, idleW: Int = Power.DEADBAND, noBatt: Boolean = false): List<Pair<Int, String>> {
     val out = mutableListOf<Pair<Int, String>>()
-    if (!d.ok) out += 2 to "No fresh data from inverter: ${d.err.ifEmpty { "unknown" }}"
+    if (!d.ok) out += 2 to "The inverter has not answered for a while (last error: ${d.err.ifEmpty { "none" }}). Check the cable to the inverter."
     if (d.mode == 'F') out += 2 to "Inverter is in FAULT mode"
     Decode.activeWarnings(d.warn, noBatt).forEach { out += (if (it in Decode.severe) 2 else 1) to (Decode.warnings[it] ?: "Warning $it") }
     if (d.ok && !noBatt && d.battPct <= 20 && d.battW < 0) out += 1 to "Battery is low (${d.battPct}%)"

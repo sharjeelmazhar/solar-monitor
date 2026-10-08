@@ -283,6 +283,9 @@ private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.
                 fallbackColorEffect(HazeColorEffect.tint(cs.surfaceContainer.copy(alpha = 0.96f)))
             })
             .border(1.2.dp, rim, shape)
+            // the light bending at the glass edge: a soft bright band just inside the rim, strongest top and bottom
+            .padding(1.2.dp)
+            .border(3.dp, androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) 0.16f else 0.40f), Color.White.copy(alpha = 0f), Color.White.copy(alpha = if (dark) 0.08f else 0.22f))), shape)
             .padding(5.dp),
     ) {
         // one highlight that slides between tabs with a soft spring (same motion as the web bar: bounce 0.15, 0.4 s)
@@ -307,7 +310,8 @@ private fun FloatingBar(tab: Tab, onSelect: (Tab) -> Unit, haze: dev.chrisbanes.
                 ) {
                     Icon(t.icon, null, tint = fg, modifier = Modifier.size(21.dp))
                     Spacer(Modifier.height(2.dp))
-                    Text(t.label, color = fg, fontSize = 11.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
+                    // fixed size: with a large system font the labels would be cut ("Histor"), so they do not scale (like iOS tab bars)
+                    Text(t.label, color = fg, fontSize = (11f / androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)).sp, softWrap = false, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium, maxLines = 1)
                 }
             }
         }
@@ -331,12 +335,12 @@ private fun StatusPill(repo: Repository) {
         conn == Conn.Offline || (live != null && stale != null) -> "Offline" to e.crit
         conn != Conn.Live || live == null -> "Connecting" to MaterialTheme.colorScheme.outline
         live?.ever != true -> "No inverter" to e.crit
-        live?.ok != true -> "Inverter silent" to e.crit
+        live?.ok != true -> "No data" to e.crit   // short so the name and clock keep their room
         age > 10 -> "${age}s ago" to e.warn
         else -> "Live" to e.good
     }
     Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(8.dp).clip(CircleShape).background(color))
             Spacer(Modifier.width(7.dp))
             Text(text, style = MaterialTheme.typography.labelLarge)
@@ -371,6 +375,7 @@ private fun HeaderClock(repo: Repository) {
     LaunchedEffect(Unit) { while (true) { delay(1000); now = android.os.SystemClock.elapsedRealtime() } }
     val t = live?.t?.takeIf { it > 0 }?.let { it + (now - last).coerceAtLeast(0) } ?: System.currentTimeMillis()
     val day = java.time.Instant.ofEpochMilli(t).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))
-    Text("$day · ${com.solarmonitor.app.ui.hhmmss(t)}", style = MaterialTheme.typography.labelSmall.merge(com.solarmonitor.app.ui.theme.NumberStyle),
+    // time first: on narrow phones the end of the line is what gets cut, and the time matters more than the date
+    Text("${com.solarmonitor.app.ui.hhmmss(t)} · $day", overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall.merge(com.solarmonitor.app.ui.theme.NumberStyle),
         color = MaterialTheme.colorScheme.outline, maxLines = 1)
 }

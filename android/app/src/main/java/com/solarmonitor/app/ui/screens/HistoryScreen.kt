@@ -154,8 +154,14 @@ fun HistoryScreen(repo: Repository, padding: PaddingValues) {
                     Box(Modifier.weight(1f).padding(horizontal = 8.dp).heightIn(min = 40.dp).clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable { picker = true }.padding(horizontal = 10.dp, vertical = 6.dp),
                         contentAlignment = Alignment.Center) {
-                        Text((if (date == today) "Today · " else "") + dateOf(date).format(DateTimeFormatter.ofPattern("EEEE d MMMM")),
-                            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                        // narrow phone or large font: short date on one line instead of wrapping letter by letter
+                        androidx.compose.foundation.layout.BoxWithConstraints(contentAlignment = Alignment.Center) {
+                            val long = maxWidth > 190.dp && androidx.compose.ui.platform.LocalDensity.current.fontScale < 1.2f
+                            Text(if (long) (if (date == today) "Today · " else "") + dateOf(date).format(DateTimeFormatter.ofPattern("EEEE d MMMM"))
+                                 else if (date == today) "Today" else dateOf(date).format(DateTimeFormatter.ofPattern("EEE d MMM")),
+                                style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
+                                maxLines = if (long) 2 else 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
                     }
                     FilledTonalIconButton(onClick = { date = ymd(dateOf(date).plusDays(1)) }, enabled = date < today) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next day") }
                     Spacer(Modifier.width(8.dp))

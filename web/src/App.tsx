@@ -127,7 +127,7 @@ function Clock() {
   const now = t ? new Date(t + (performance.now() - at)) : new Date()
   return (
     <p className="num truncate text-xs text-text-3">
-      {now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} · {hhmmss(now.getTime())}
+      {hhmmss(now.getTime())} · {now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
     </p>
   )
 }
@@ -145,7 +145,7 @@ function StatusPill() {
   let pulse = false
   if (conn === 'offline' || (hasData && stale != null)) { text = 'Offline'; tone = 'var(--crit)' }
   else if (ever === false) { text = 'No inverter'; tone = 'var(--crit)' }
-  else if (ok === false) { text = 'Inverter silent'; tone = 'var(--crit)' }
+  else if (ok === false) { text = 'No data'; tone = 'var(--crit)' }
   else if (conn === 'reconnecting') { text = 'Reconnecting'; tone = 'var(--warn)' }
   else if (conn === 'live' && ago != null) {
     if (ago > 10) { text = `${ago}s ago`; tone = 'var(--warn)' } else { text = 'Online'; tone = 'var(--good)'; pulse = true }

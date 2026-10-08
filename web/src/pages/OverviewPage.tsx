@@ -200,7 +200,7 @@ export interface AlertItem { level: 0 | 1 | 2; text: string }
 
 export function alertsOf(d: Live, idleW = 15, noBatt = false): AlertItem[] {
   const out: AlertItem[] = []
-  if (!d.ok) out.push({ level: 2, text: `No fresh data from the inverter: ${d.poll.err || 'unknown reason'}` })
+  if (!d.ok) out.push({ level: 2, text: `The inverter has not answered for a while (last error: ${d.poll.err || 'none'}). Check the cable to the inverter.` })
   if (d.mode === 'F') out.push({ level: 2, text: 'Inverter is in FAULT mode' })
   for (const i of activeWarnings(d.warn, noBatt)) out.push({ level: SEVERE.has(i) ? 2 : 1, text: WARNINGS[i] })
   if (d.ok && !noBatt && d.battPct <= 20 && d.battW < 0) out.push({ level: 1, text: `Battery is low (${d.battPct}%)` })

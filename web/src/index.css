@@ -183,7 +183,9 @@ body::before {
     0 12px 32px -10px rgb(0 0 0 / 0.28),
     inset 1px 1px 0 rgb(255 255 255 / 0.95),
     inset -1px -1px 0 rgb(255 255 255 / 0.7),
-    inset 0 0 0 1px rgb(255 255 255 / 0.2);
+    inset 0 0 0 1px rgb(255 255 255 / 0.2),
+    inset 0 4px 5px -3px rgb(255 255 255 / 0.4),
+    inset 0 -4px 5px -3px rgb(255 255 255 / 0.22);
 }
 .dark .glass-nav {
   background: rgb(0 0 0 / 0.10);
@@ -191,5 +193,7 @@ body::before {
     0 12px 32px -10px rgb(0 0 0 / 0.6),
     inset 1px 1px 0 rgb(255 255 255 / 0.45),
     inset -1px -1px 0 rgb(255 255 255 / 0.3),
-    inset 0 0 0 1px rgb(255 255 255 / 0.06);
+    inset 0 0 0 1px rgb(255 255 255 / 0.06),
+    inset 0 4px 5px -3px rgb(255 255 255 / 0.16),
+    inset 0 -4px 5px -3px rgb(255 255 255 / 0.08);
 }
