@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef } from 'react'
 import { fmtW } from '../../lib/format'
 import { battState } from '../../lib/power'
-import { sunPhase } from '../../lib/sun'
+import { solarBadge, useWeather } from '../../lib/weather'
 import type { Live } from '../../lib/types'
 import { BatteryIcon, GridIcon, GridOffMark, HomeIcon, InverterIcon, SolarIcon } from '../icons/EnergyIcons'
 
@@ -20,6 +20,8 @@ const COLORS: Record<Key, string> = { solar: 'var(--solar)', grid: 'var(--grid)'
 const DEADBAND = 15 // W: smaller flows are shown as idle so lines don't flicker
 const MAX_DOTS = 7
 const MOON = '#8b9cf7' // soft moon blue, readable on light and dark
+const CLOUD = '#94a3b8' // slate cloud
+const RAIN = '#60a5fa'
 const DIM = 0.35 // opacity of a part that is not available (night solar, grid off, no battery)
 
 interface Flow { w: number; reverse: boolean }
@@ -109,9 +111,11 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND, noBatt
   }, [])
 
   const ok = !!d?.ok && !still
+  const weather = useWeather()
+  const badge = d?.ever ? solarBadge(d, weather) : null
   // Parts that are not available right now are faded, line included (they stay drawn: they are wired up).
   const dim: Record<Key, boolean> = {
-    solar: !!d?.ever && d.pvW < DEADBAND && sunPhase(d.t ? new Date(d.t) : new Date()) === 'night',
+    solar: badge === 'night',
     grid: !!d?.ever && !d.gridOn,
     batt: noBatt,
     home: false,
@@ -165,12 +169,25 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND, noBatt
         <g transform={`translate(${P.solar[0]} ${P.solar[1]})`}><SolarIcon intensity={ok ? solarFrac : 0} spinS={ok && flows.solar.w ? 26 - 22 * solarFrac : 0} /></g>
       </g>
 
-      {/* night: a moon badge on the solar circle's top-right corner (like an unread badge), not faded */}
-      {dim.solar && (
+      {/* sky badge on the solar circle's top-right corner (like an unread badge), not faded:
+          moon at night, cloud when cloudy (rain drops when raining) */}
+      {badge && (
         <g transform={`translate(${P.solar[0] + 23} ${P.solar[1] - 23})`} aria-hidden>
           <circle r={11} fill="var(--surface-solid)" stroke="var(--border-strong)" strokeWidth={1.5} />
-          <circle r={6} fill={MOON} />
-          <circle cx={2.8} cy={-2.4} r={5} fill="var(--surface-solid)" />
+          {badge === 'night' ? (
+            <>
+              <circle r={6} fill={MOON} />
+              <circle cx={2.8} cy={-2.4} r={5} fill="var(--surface-solid)" />
+            </>
+          ) : (
+            <g fill={CLOUD} transform={badge === 'rain' ? 'translate(0 -2)' : undefined}>
+              <circle cx={-3} cy={0.5} r={3.4} />
+              <circle cx={1} cy={-1.8} r={4.2} />
+              <circle cx={4.4} cy={1} r={3} />
+              <rect x={-6.4} y={0.5} width={13.8} height={3.6} rx={1.8} />
+              {badge === 'rain' && <path d="M-3 6.5l-1 2.6M1 6.5l-1 2.6M5 6.5l-1 2.6" stroke={RAIN} strokeWidth={1.5} strokeLinecap="round" />}
+            </g>
+          )}
         </g>
       )}
 
@@ -192,7 +209,7 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND, noBatt
 
       {d?.ever && (
         <g className="num" textAnchor="middle">
-          <NodeText x={72} y={80 - 50} big={fmtW(d.pvW)} small={dim.solar ? 'Solar · night' : 'Solar'} smallBelow={80 + 50} />
+          <NodeText x={72} y={80 - 50} big={fmtW(d.pvW)} small={badge ? `Solar · ${badge === 'night' ? 'night' : badge}` : 'Solar'} smallBelow={80 + 50} />
           <NodeText x={328} y={80 - 50} big={d.gridOn ? (d.gridW > DEADBAND ? fmtW(d.gridW) : `${Math.round(d.gridV)} V`) : 'Off'} small={d.gridOn ? (d.gridW > DEADBAND ? 'Grid · in use' : 'Grid · standby') : 'Grid off'} smallBelow={80 + 50} />
           <NodeText x={72} y={230 + 58} big={noBatt ? '—' : `${d.battPct}%`} small={noBatt ? 'No battery' : bs === 'charging' ? `Charging ${fmtW(d.battW)}` : bs === 'discharging' ? `Discharging ${fmtW(-d.battW)}` : d.battPct >= 99 ? 'Full' : 'Idle'} smallBelow={230 - 46} />
           <NodeText x={328} y={230 + 58} big={fmtW(d.loadW)} small={`Home · ${d.loadPct}%`} smallBelow={230 - 46} />

@@ -161,8 +161,9 @@ class Alerts(private val context: Context, private val prefs: Prefs) {
                 weakClearSince = 0
                 if (weakSince == 0L) weakSince = now
                 if (!weakSent && now - weakSince > 5 * 60_000 && now - weakLastAt > 60 * 60_000) {
-                    alert(ID_BATT, CH_BATTERY, R.drawable.ic_stat_battery, "Little sun: the battery is running the home",
-                        "Solar ${d.pvW} W, home ${d.loadW} W, battery ${d.battPct}% (giving ${-d.battW} W). It may be cloudy. Turn the grid on to save the battery.", 60)
+                    val sky = com.solarmonitor.app.data.Weather.words(com.solarmonitor.app.data.Weather.current())
+                    alert(ID_BATT, CH_BATTERY, R.drawable.ic_stat_battery, if (sky != null) "Cloudy outside: the battery is running the home" else "Little sun: the battery is running the home",
+                        "Solar ${d.pvW} W, home ${d.loadW} W, battery ${d.battPct}% (giving ${-d.battW} W). ${if (sky != null) "It's $sky." else "It may be cloudy."} Turn the grid on to save the battery.", 60)
                     weakSent = true; weakLastAt = now
                 }
             } else {

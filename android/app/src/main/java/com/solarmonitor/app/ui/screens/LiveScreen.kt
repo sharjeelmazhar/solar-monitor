@@ -239,7 +239,7 @@ fun alertItems(d: Live, idleW: Int = Power.DEADBAND, noBatt: Boolean = false): L
     Decode.activeWarnings(d.warn, noBatt).forEach { out += (if (it in Decode.severe) 2 else 1) to (Decode.warnings[it] ?: "Warning $it") }
     if (d.ok && !noBatt && d.battPct <= 20 && d.battW < 0) out += 1 to "Battery is low (${d.battPct}%)"
     if (d.tempC >= 60) out += 1 to "Inverter is hot (${d.tempC} °C)"
-    if (Power.weakSolar(d, idleW)) out += 1 to "Little sun right now (cloudy?) and the battery is powering the home (${fmtW(-d.battW)}, battery ${d.battPct}%). Turn the grid on to save the battery."
+    if (Power.weakSolar(d, idleW)) out += 1 to "Little sun right now (${com.solarmonitor.app.data.Weather.words(com.solarmonitor.app.data.Weather.current()) ?: "cloudy?"}) and the battery is powering the home (${fmtW(-d.battW)}, battery ${d.battPct}%). Turn the grid on to save the battery."
     else if (!d.gridOn) {
         val ph = Sun.phase()
         out += 0 to if (ph == Sun.Phase.Day) "Grid supply is off: running on solar and battery"

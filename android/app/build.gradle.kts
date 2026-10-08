@@ -20,8 +20,8 @@ android {
         applicationId = "com.solarmonitor.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
-        versionName = "1.5.5"
+        versionCode = 14
+        versionName = "1.5.6"
     }
 
     signingConfigs {

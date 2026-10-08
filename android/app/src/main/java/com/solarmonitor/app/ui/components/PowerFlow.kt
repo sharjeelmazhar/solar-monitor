@@ -121,8 +121,9 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
         val colors = listOf(e.solar, e.grid, e.batt, e.load)
         val reverse = listOf(false, false, (x?.battW ?: 0) > 0, false)
         // parts that are not available right now are faded, line included (they stay drawn: they are wired up)
+        val badge = if (x?.ever == true) com.solarmonitor.app.data.Weather.badge(x, com.solarmonitor.app.data.Weather.current()) else null
         val dim = listOf(
-            x?.ever == true && x.pvW < 15 && com.solarmonitor.app.data.Sun.phase() == com.solarmonitor.app.data.Sun.Phase.Night,
+            badge == com.solarmonitor.app.data.Weather.Badge.Night,
             x?.ever == true && !x.gridOn,
             noBatt,
             false,
@@ -167,13 +168,25 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
                 translate(SOLAR.x, SOLAR.y) { sunIcon(e.solar, anim[0]) }
             }
 
-            // night: a moon badge on the solar circle's top-right corner (like an unread badge), not faded (same as the web)
-            if (dim[0]) {
+            // sky badge on the solar circle's top-right corner (like an unread badge), not faded (same as the web):
+            // moon at night, cloud when cloudy (rain drops when raining)
+            if (badge != null) {
                 val b = Offset(SOLAR.x + 23f, SOLAR.y - 23f)
                 drawCircle(cs.surfaceContainerLow, 11f, b)
                 drawCircle(cs.outlineVariant, 11f, b, style = Stroke(1.5f))
-                drawCircle(Color(0xFF8B9CF7), 6f, b)
-                drawCircle(cs.surfaceContainerLow, 5f, b + Offset(2.8f, -2.4f))
+                if (badge == com.solarmonitor.app.data.Weather.Badge.Night) {
+                    drawCircle(Color(0xFF8B9CF7), 6f, b)
+                    drawCircle(cs.surfaceContainerLow, 5f, b + Offset(2.8f, -2.4f))
+                } else {
+                    val rain = badge == com.solarmonitor.app.data.Weather.Badge.Rain
+                    val c = b + Offset(0f, if (rain) -2f else 0f)
+                    val cloud = Color(0xFF94A3B8)
+                    drawCircle(cloud, 3.4f, c + Offset(-3f, 0.5f))
+                    drawCircle(cloud, 4.2f, c + Offset(1f, -1.8f))
+                    drawCircle(cloud, 3f, c + Offset(4.4f, 1f))
+                    drawRoundRect(cloud, c + Offset(-6.4f, 0.5f), Size(13.8f, 3.6f), CornerRadius(1.8f))
+                    if (rain) for (dx in listOf(-3f, 1f, 5f)) drawLine(Color(0xFF60A5FA), c + Offset(dx, 6.5f), c + Offset(dx - 1f, 9.1f), 1.5f, StrokeCap.Round)
+                }
             }
 
             val gridOn = x?.gridOn == true
@@ -209,10 +222,15 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
             val r = tm.measure(text, style)
             drawText(r, topLeft = Offset(at.x * s - r.size.width / 2f, at.y * s - r.size.height / 2f))
         }
-        val night = dim[0]
         if (x != null && x.ever) {
             label(fmtW(x.pvW), Offset(SOLAR.x, SOLAR.y - 48), true)
-            label(if (night) "Solar · night" else "Solar", Offset(SOLAR.x, SOLAR.y + 46), false)
+            label(when (badge) {
+                com.solarmonitor.app.data.Weather.Badge.Night -> "Solar · night"
+                com.solarmonitor.app.data.Weather.Badge.Cloudy -> "Solar · cloudy"
+                com.solarmonitor.app.data.Weather.Badge.Rain -> "Solar · rain"
+                com.solarmonitor.app.data.Weather.Badge.CloudyGuess -> "Solar · cloudy?"
+                null -> "Solar"
+            }, Offset(SOLAR.x, SOLAR.y + 46), false)
             label(if (x.gridOn) (if (x.gridW > 0) fmtW(x.gridW) else "${x.gridV.toInt()} V") else "Off", Offset(GRID.x, GRID.y - 48), true)
             label(if (x.gridOn) (if (x.gridW > 0) "Grid · in use" else "Grid · standby") else "Grid off", Offset(GRID.x, GRID.y + 46), false)
             label(if (noBatt) "—" else "${x.battPct}%", Offset(BATT.x, BATT.y + 50), true)

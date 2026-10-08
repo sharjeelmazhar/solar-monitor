@@ -8,6 +8,7 @@ import { fmtDuration, fmtUnits, fmtW, fmtWh, hhmm, hhmmss } from '../lib/format'
 import { use3d, useBattIdle } from '../lib/prefs'
 import { battAmps, battState, sourcesLabel, sourcesSentence, weakSolar } from '../lib/power'
 import { sunPhase, sunTimes } from '../lib/sun'
+import { currentWeather, skyWords } from '../lib/weather'
 import { useStale, useStore } from '../lib/store'
 import type { Info, Live } from '../lib/types'
 
@@ -205,7 +206,7 @@ export function alertsOf(d: Live, idleW = 15, noBatt = false): AlertItem[] {
   for (const i of activeWarnings(d.warn, noBatt)) out.push({ level: SEVERE.has(i) ? 2 : 1, text: WARNINGS[i] })
   if (d.ok && !noBatt && d.battPct <= 20 && d.battW < 0) out.push({ level: 1, text: `Battery is low (${d.battPct}%)` })
   if (d.tempC >= 60) out.push({ level: 1, text: `Inverter is hot (${d.tempC} °C)` })
-  if (weakSolar(d, idleW)) out.push({ level: 1, text: `Little sun right now (cloudy?) and the battery is powering the home (${fmtW(-d.battW)}, battery ${d.battPct}%). Turn the grid on to save the battery.` })
+  if (weakSolar(d, idleW)) out.push({ level: 1, text: `Little sun right now (${skyWords(currentWeather()) ?? 'cloudy?'}) and the battery is powering the home (${fmtW(-d.battW)}, battery ${d.battPct}%). Turn the grid on to save the battery.` })
   else if (!d.gridOn) {
     const ph = sunPhase()
     out.push({ level: 0, text: ph === 'day' ? 'Grid supply is off: running on solar and battery'
