@@ -1,5 +1,6 @@
 package com.solarmonitor.app.ui.screens
 
+import com.solarmonitor.app.ui.components.Segmented
 import androidx.compose.material3.FilledTonalButton
 import com.solarmonitor.app.ui.hourLabel
 import androidx.compose.ui.unit.sp
@@ -88,7 +89,6 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
     val gridOn = live?.gridOn
     var span by rememberSaveable { mutableIntStateOf(7) }
     var clockDay by rememberSaveable { mutableIntStateOf(today) }
-    var showAll by rememberSaveable { mutableStateOf(false) }
     var data by remember { mutableStateOf<Map<Int, List<MinRec>>>(emptyMap()) }
     var loading by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf(false) }
@@ -122,10 +122,13 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
 
     ScreenList(padding, columns = false) {
         item(key = "span") {
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf(1 to "Today", 7 to "7 days", 14 to "14 days", 31 to "All").forEachIndexed { i, (n, l) ->
-                    SegmentedButton(selected = span == n, onClick = { span = n }, shape = SegmentedButtonDefaults.itemShape(i, 4), icon = {}) { Text(l) }
+            SectionCard(null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 10.dp)) {
+                    Icon(Icons.Rounded.PowerOff, null, tint = e.grid, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Grid outages (load-shedding)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 }
+                Segmented(span, listOf(1 to "Today", 7 to "7 days", 14 to "14 days", 31 to "All"), { span = it })
             }
         }
         if (gridOn != null && stale == null) item(key = "now") { NowBanner(gridOn, current, now) }
@@ -143,25 +146,25 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
 
         item(key = "stats") {
             val total = events.sumOf { it.minutes }
-            Grid(2, listOf(
-                { m -> StatTile("Outages", "${events.size}", m) },
-                { m -> StatTile("Time without grid", fmtDuration(total.toDouble()), m) },
-                { m -> StatTile("Longest", if (events.isEmpty()) "–" else fmtDuration(events.maxOf { it.minutes }.toDouble()), m) },
-                { m -> StatTile("Average", if (events.isEmpty()) "–" else fmtDuration(total.toDouble() / events.size), m) },
-                { m -> StatTile("Grid available", if (all.isNotEmpty()) "${(100 - total * 100.0 / all.size).roundToInt().coerceIn(0, 100)}%" else "–", m) },
-                { m -> StatTile("Monitored", fmtDuration(all.size.toDouble()), m) },
-            ))
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Grid(2, listOf(
+                    { m -> StatTile("Outages", "${events.size}", m, tone = e.grid, hint = if (span == 1) "today" else "last ${days.size} day${if (days.size > 1) "s" else ""}") },
+                    { m -> StatTile("Time without grid", fmtDuration(total.toDouble()), m) },
+                    { m -> StatTile("Longest", if (events.isEmpty()) "–" else fmtDuration(events.maxOf { it.minutes }.toDouble()), m) },
+                    { m -> StatTile("Average outage", if (events.isEmpty()) "–" else fmtDuration(total.toDouble() / events.size), m) },
+                ))
+                StatTile("Grid available", if (all.isNotEmpty()) "${(100 - total * 100.0 / all.size).roundToInt().coerceIn(0, 100)} %" else "–", Modifier.fillMaxWidth(),
+                    hint = "of ${fmtDuration(all.size.toDouble())} monitored")
+            }
         }
 
         item(key = "clock") {
             val idx = days.indexOf(clockDay)
-            SectionCard(if (clockDay == today) "Today" else dayLabel(clockDay), info = "Each slice is one hour. Its colours show what powered the home: yellow solar, green battery, pink grid. Longer slices mean more energy used.\n\nThe outer ring shows the grid: pink when available, red stripes when it was off. Tap a slice or a red part for details.", action = {
+            SectionCard("Day clock", sub = if (clockDay == today) "Today · midnight at the top" else dateOf(clockDay).format(DateTimeFormatter.ofPattern("EEEE d MMM")), info = "Each slice is one hour. Its colours show what powered the home: yellow solar, green battery, pink grid. Longer slices mean more energy used.\n\nThe outer ring shows the grid: pink when available, red stripes when it was off. Tap a slice or a red part for details.", action = {
                 FilledTonalIconButton(onClick = { clockDay = days[idx + 1] }, enabled = idx >= 0 && idx < days.size - 1) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, "Previous day") }
                 Spacer(Modifier.width(6.dp))
                 FilledTonalIconButton(onClick = { clockDay = days[idx - 1] }, enabled = idx > 0) { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Next day") }
             }) {
-                Text("24-hour clock · midnight at the top", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(4.dp))
                 val r = data[clockDay]
                 if (r == null) LinearProgressIndicator(Modifier.fillMaxWidth())
                 else DayClock(r, dayStartMs(clockDay), events, if (clockDay == today) now else null)
@@ -171,11 +174,11 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
         item(key = "events-title") {
             Column(Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
                 Text("What happened", style = MaterialTheme.typography.titleMedium)
-                Text("Each card is one time the grid went off, newest first", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${events.size} time${if (events.size == 1) "" else "s"} the grid went off, newest first", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (events.isEmpty()) item(key = "none") { SectionCard(null) { Text("No outages in this period.", color = MaterialTheme.colorScheme.onSurfaceVariant) } }
-        val byDay = events.reversed().let { if (showAll) it else it.take(5) }.groupBy { ymd(Instant.ofEpochMilli(it.start).atZone(zone).toLocalDate()) }
+        val byDay = events.reversed().groupBy { ymd(Instant.ofEpochMilli(it.start).atZone(zone).toLocalDate()) }
         byDay.forEach { (k, list) ->
             item(key = "d$k") {
                 Text(
@@ -186,19 +189,12 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
             list.forEach { o -> item(key = "o${o.start}") { EventCard(o, all) { if (k in days) clockDay = k } } }
         }
 
-        if (events.size > 5) item(key = "more") {
-            FilledTonalButton(onClick = { showAll = !showAll }, modifier = Modifier.fillMaxWidth()) {
-                Text(if (showAll) "Show fewer" else "Show all ${events.size} outages")
-            }
-        }
         if (span > 1) item(key = "hours") {
             val off = remember(all) { Outages.hourly(all).map { it.offMin } }
             val most = maxOf(1, off.maxOrNull() ?: 0)
             val crit = LocalEnergy.current.crit
             val base = MaterialTheme.colorScheme.surfaceContainerHigh
-            SectionCard("Usual outage hours") {
-                Text("Minutes without grid by hour, last ${days.size} days", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(10.dp))
+            SectionCard("Usual outage hours", sub = "minutes without grid by hour, last ${days.size} days") {
                 for (row in 0 until 2) Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     for (h in row * 12 until row * 12 + 12) Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         val m = off[h]
@@ -218,9 +214,7 @@ fun OutagesScreen(repo: Repository, padding: PaddingValues) {
             }
         }
         if (span > 1) item(key = "strips") {
-            SectionCard("Day by day") {
-                Text("Tap a day to show it on the clock", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(8.dp))
+            SectionCard("Day by day", sub = "pink = grid on · red = grid off" + if (days.size < span) " · the monitor has ${days.size} day${if (days.size == 1) "" else "s"} so far" else "") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     days.forEach { k ->
                         Row(

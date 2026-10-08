@@ -1,5 +1,10 @@
 package com.solarmonitor.app.ui.components
 
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.pointerInput
@@ -39,6 +44,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -47,7 +56,7 @@ import com.solarmonitor.app.ui.theme.NumberStyle
 @Composable
 fun SectionCard(
     title: String?, modifier: Modifier = Modifier, action: (@Composable RowScope.() -> Unit)? = null,
-    info: String? = null,
+    info: String? = null, sub: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Card(
@@ -57,11 +66,15 @@ fun SectionCard(
     ) {
         Column(Modifier.padding(16.dp).animateContentSize()) {
             if (title != null || action != null) {
-                Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                // same header as the web CardHeader: title (+ info), a muted line under it, actions on the right
+                Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (title != null) {
-                        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
-                            if (info != null) InfoButton(title, info)
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                                if (info != null) InfoButton(title, info, small = true)
+                            }
+                            if (sub != null) Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     } else Spacer(Modifier.weight(1f))
                     action?.invoke(this)
@@ -75,62 +88,74 @@ fun SectionCard(
 @Composable
 fun Dot(color: Color, size: Int = 10) = Box(Modifier.size(size.dp).clip(CircleShape).background(color))
 
-/** Big number with a smaller unit, e.g. "728" + " W". */
+/** Big number with a smaller unit, e.g. "728" + " W". The number glides to a new value (0.45 s), like the web counter. */
 @Composable
-fun BigValue(text: String, modifier: Modifier = Modifier) {
-    val m = Regex("^(-?[\\d.,]+)\\s*(.*)$").find(text)
+fun BigValue(text: String, modifier: Modifier = Modifier, style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.headlineMedium) {
+    val m = Regex("""^(-?\d+(?:\.\d+)?)\s*(.*)$""").find(text)
+    val target = m?.groupValues?.get(1)?.toFloatOrNull()
+    val decimals = m?.groupValues?.get(1)?.substringAfter('.', "")?.length ?: 0
+    val shown by androidx.compose.animation.core.animateFloatAsState(target ?: 0f, androidx.compose.animation.core.tween(450), label = "count")
     Text(
         buildAnnotatedString {
-            if (m == null) append(text) else {
-                append(m.groupValues[1])
-                withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = MaterialTheme.typography.titleMedium.fontSize, color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+            if (m == null || target == null) append(text) else {
+                append(String.format(java.util.Locale.US, "%." + decimals + "f", shown))
+                if (m.groupValues[2].isNotEmpty()) withStyle(SpanStyle(fontWeight = FontWeight.Medium, fontSize = style.fontSize * 0.55f, color = MaterialTheme.colorScheme.onSurfaceVariant)) {
                     append(" " + m.groupValues[2])
                 }
             }
         },
-        style = MaterialTheme.typography.headlineMedium.merge(NumberStyle), maxLines = 1, modifier = modifier,
+        style = style.merge(NumberStyle).copy(fontWeight = FontWeight.SemiBold), maxLines = 1, modifier = modifier,
     )
 }
 
+/** The web "Right now" tile: coloured dot + caps label, big value, two lines, optional bar, soft colour glow in the corner. */
 @Composable
 fun KpiTile(
     label: String, color: Color, value: String, line1: String, line2: String, modifier: Modifier = Modifier,
     progress: Float? = null, progressColor: Color = color, smallValue: Boolean = false,
 ) {
-    Column(
-        modifier.clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(14.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Dot(color)
-            Spacer(Modifier.width(8.dp))
-            Text(label.uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        }
-        Spacer(Modifier.height(6.dp))
-        if (smallValue) Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        else BigValue(value)
-        Spacer(Modifier.height(2.dp))
-        if (line1.isNotBlank()) Text(line1, style = MaterialTheme.typography.bodySmall.merge(NumberStyle), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (line2.isNotBlank()) Text(line2, style = MaterialTheme.typography.bodySmall.merge(NumberStyle), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (progress != null) {
-            Spacer(Modifier.height(8.dp))
-            Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.outlineVariant)) {
-                Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(6.dp).clip(CircleShape).background(progressColor))
+    Box(modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+        .drawBehind {
+            val c = androidx.compose.ui.geometry.Offset(size.width - 16.dp.toPx(), 16.dp.toPx())   // web: 80 px blob at -24 px, blurred
+            drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(color.copy(alpha = 0.25f), Color.Transparent), c, 64.dp.toPx()), 64.dp.toPx(), c)
+        }) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Dot(color, 8)
+                Spacer(Modifier.width(8.dp))
+                Text(label.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.06.em,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.height(4.dp))
+            if (smallValue) Text(value, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, lineHeight = 24.sp)
+            else BigValue(value, style = MaterialTheme.typography.headlineMedium.copy(fontSize = 26.sp, lineHeight = 32.sp))
+            if (line1.isNotBlank()) Text(line1, style = MaterialTheme.typography.bodySmall.merge(NumberStyle), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (line2.isNotBlank()) Text(line2, style = MaterialTheme.typography.bodySmall.merge(NumberStyle), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (progress != null) {
+                Spacer(Modifier.height(8.dp))
+                val w by androidx.compose.animation.core.animateFloatAsState(progress.coerceIn(0f, 1f), androidx.compose.animation.core.tween(700), label = "bar")
+                Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+                    Box(Modifier.fillMaxWidth(w).height(6.dp).clip(CircleShape).background(progressColor))
+                }
             }
         }
     }
 }
 
+/** The web Stat tile: optional colour dot, label (+ info), value with a small unit, optional hint. */
 @Composable
-fun StatTile(label: String, value: String, modifier: Modifier = Modifier, info: String? = null, hint: String? = null) {
-    Column(modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 14.dp, vertical = 11.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+fun StatTile(label: String, value: String, modifier: Modifier = Modifier, info: String? = null, hint: String? = null, tone: Color? = null) {
+    Column(modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 22.dp)) {
+            if (tone != null) { Dot(tone, 8); Spacer(Modifier.width(8.dp)) }
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f, fill = false))
             if (info != null) InfoButton(label, info, small = true)
         }
-        Text(value, style = MaterialTheme.typography.titleLarge.merge(NumberStyle), fontWeight = FontWeight.Bold)
-        if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        BigValue(value, style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp))
+        if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
     }
 }
+
 
 /** Small (i) button that explains something in plain language. */
 @Composable
@@ -219,4 +244,35 @@ fun Modifier.clearOnOutsideTap(onOutside: () -> Unit): Modifier {
     val cb = androidx.compose.runtime.rememberUpdatedState(onOutside)
     androidx.compose.runtime.LaunchedEffect(bus) { bus.taps.collect { p -> val b = bounds[0]; if (b != null && !b.contains(p)) cb.value() } }
     return this.onGloballyPositioned { bounds[0] = it.boundsInWindow() }
+}
+
+/**
+ * The web Segmented control: options in a soft rounded tray, the chosen one on a raised pill that slides over with a
+ * spring (bounce 0.15, 0.4 s), exactly like the web's shared-layout animation.
+ */
+@Composable
+fun <T> Segmented(value: T, options: List<Pair<T, String>>, onChange: (T) -> Unit, modifier: Modifier = Modifier) {
+    val cs = MaterialTheme.colorScheme
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val pos = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateMapOf<Int, Pair<Float, Float>>() }
+    val sel = options.indexOfFirst { it.first == value }.coerceAtLeast(0)
+    val spec = androidx.compose.animation.core.spring<androidx.compose.ui.unit.Dp>(dampingRatio = 0.72f, stiffness = 260f)
+    val x by androidx.compose.animation.core.animateDpAsState(with(density) { (pos[sel]?.first ?: 0f).toDp() }, spec, label = "segX")
+    val w by androidx.compose.animation.core.animateDpAsState(with(density) { (pos[sel]?.second ?: 0f).toDp() }, spec, label = "segW")
+    Box(modifier.clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh).padding(4.dp)) {
+        if (pos[sel] != null) Box(Modifier.offset(x = x).width(w).height(40.dp).shadow(1.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp))
+            .background(cs.surfaceContainerLowest).border(1.dp, cs.outlineVariant, RoundedCornerShape(12.dp)))
+        Row {
+            options.forEachIndexed { i, (v, label) ->
+                val on = i == sel
+                Box(Modifier.height(40.dp).clip(RoundedCornerShape(12.dp))
+                    .onGloballyPositioned { c -> pos[i] = c.positionInParent().x to c.size.width.toFloat() }
+                    .clickable(role = androidx.compose.ui.semantics.Role.RadioButton) { onChange(v) }
+                    .padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1,
+                        color = if (on) cs.onSurface else cs.onSurfaceVariant)
+                }
+            }
+        }
+    }
 }

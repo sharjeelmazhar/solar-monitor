@@ -122,8 +122,11 @@ class Repository(private val context: Context, val prefs: Prefs) {
         _lastRx.value = now
         if (prev == null || d.seq != prev.seq) {
             val last = _lastMsg.value
-            if (last != 0L && prev != null && d.seq == prev.seq + 1) {
-                intervals.addLast(now - last); if (intervals.size > 12) intervals.removeFirst()
+            // time per reading (same as the web): the monitor's timestamps when it has a clock, divided by the readings in
+            // between, because unchanged readings are not pushed and pushes can arrive bunched up
+            if (last != 0L && prev != null && d.seq > prev.seq && d.seq - prev.seq < 20) {
+                val dt = if (d.t > 0 && prev.t > 0 && d.t > prev.t) d.t - prev.t else now - last
+                intervals.addLast(dt / (d.seq - prev.seq)); if (intervals.size > 12) intervals.removeFirst()
                 _interval.value = intervals.sum() / intervals.size
             }
             _lastMsg.value = now

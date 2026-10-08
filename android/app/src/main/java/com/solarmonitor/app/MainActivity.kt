@@ -206,10 +206,17 @@ private fun AppRoot(repo: Repository) {
                 topBar = {
                     TopAppBar(
                         title = {
-                            Text(when (overlay) {
-                                Overlay.Settings -> "Settings"; Overlay.Notices -> "Notifications"
-                                Overlay.None -> info?.name?.takeIf { it.isNotBlank() && it != "Solar" } ?: "Solar Monitor"
-                            }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (overlay != Overlay.None) Text(if (overlay == Overlay.Settings) "Settings" else "Notifications", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            else Row(verticalAlignment = Alignment.CenterVertically) {
+                                // same header as the web: sun logo, name, and the monitor's clock under it
+                                Logo()
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(info?.name?.takeIf { it.isNotBlank() && it != "Solar" } ?: "Solar Monitor", maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 22.sp))
+                                    HeaderClock(repo)
+                                }
+                            }
                         },
                         navigationIcon = { if (overlay != Overlay.None) IconButton(onClick = { overlay = Overlay.None }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
                         actions = {
@@ -240,7 +247,7 @@ private fun AppRoot(repo: Repository) {
                                 Tab.History -> HistoryScreen(repo, pad)
                                 Tab.Energy -> EnergyScreen(repo, pad)
                                 Tab.Outages -> OutagesScreen(repo, pad)
-                                Tab.System -> SystemScreen(repo, pad)
+                                Tab.System -> SystemScreen(repo, pad, toast)
                             }
                         }
                     }
@@ -331,4 +338,35 @@ private fun StatusPill(repo: Repository) {
             Text(text, style = MaterialTheme.typography.labelLarge)
         }
     }
+}
+
+/** The web header's sun mark: a soft yellow glow on a rounded tile with the sun drawn on top. */
+@Composable
+private fun Logo() {
+    val e = LocalEnergy.current
+    Box(Modifier.size(40.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Canvas(Modifier.size(40.dp)) {
+            drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(e.solar.copy(alpha = 0.28f), Color.Transparent)), size.minDimension / 2.2f)
+            val s = 24.dp.toPx() / 32f
+            val o = androidx.compose.ui.geometry.Offset((size.width - 32 * s) / 2, (size.height - 32 * s) / 2)
+            fun p(x: Float, y: Float) = androidx.compose.ui.geometry.Offset(o.x + x * s, o.y + y * s)
+            drawCircle(e.solar, 6.5f * s, p(16f, 16f))
+            val rays = listOf(16f to 2.5f, 16f to 6f, 16f to 26f, 16f to 29.5f, 2.5f to 16f, 6f to 16f, 26f to 16f, 29.5f to 16f,
+                6.5f to 6.5f, 8.9f to 8.9f, 23.1f to 23.1f, 25.5f to 25.5f, 6.5f to 25.5f, 8.9f to 23.1f, 23.1f to 8.9f, 25.5f to 6.5f)
+            for (i in rays.indices step 2) drawLine(e.solar, p(rays[i].first, rays[i].second), p(rays[i + 1].first, rays[i + 1].second), 2.6f * s, androidx.compose.ui.graphics.StrokeCap.Round)
+        }
+    }
+}
+
+/** "Thu 8 Oct · 11:14:38 AM" from the monitor's clock, ticking every second (the web header clock). */
+@Composable
+private fun HeaderClock(repo: Repository) {
+    val live by repo.live.collectAsStateWithLifecycle()
+    val last by repo.lastMsg.collectAsStateWithLifecycle()
+    var now by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+    LaunchedEffect(Unit) { while (true) { delay(1000); now = android.os.SystemClock.elapsedRealtime() } }
+    val t = live?.t?.takeIf { it > 0 }?.let { it + (now - last).coerceAtLeast(0) } ?: System.currentTimeMillis()
+    val day = java.time.Instant.ofEpochMilli(t).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))
+    Text("$day · ${com.solarmonitor.app.ui.hhmmss(t)}", style = MaterialTheme.typography.labelSmall.merge(com.solarmonitor.app.ui.theme.NumberStyle),
+        color = MaterialTheme.colorScheme.outline, maxLines = 1)
 }

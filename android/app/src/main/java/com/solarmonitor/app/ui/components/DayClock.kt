@@ -1,5 +1,6 @@
 package com.solarmonitor.app.ui.components
 
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -135,7 +136,7 @@ fun DayClock(recs: List<MinRec>, dayStart: Long, outages: List<Outage>, now: Lon
                 if (h % 3 == 0) {
                     val text = if (major) hourLabel(h) else hourLabel(h).replace(Regex(" ?[AP]M$"), "").removeSuffix(":00")
                     val st = TextStyle(color = if (major) cs.onSurfaceVariant else cs.outline, fontSize = ((if (major) 11f else 10f) * s).toSp(),
-                        fontWeight = if (major) FontWeight.SemiBold else FontWeight.Normal, fontFeatureSettings = "tnum")
+                        fontWeight = if (major) FontWeight.SemiBold else FontWeight.Normal, fontFeatureSettings = "tnum", fontFamily = com.solarmonitor.app.ui.theme.GeistMono)
                     val m = tm.measure(text, st)
                     val p = at(RING1 + if (major) 22 else 17, a)
                     drawText(m, topLeft = Offset(p.x - m.size.width / 2f, p.y - m.size.height / 2f))
@@ -225,7 +226,7 @@ private fun DrawScope.wedge(h: HourMix, maxWh: Double, sel: Sel?, s: Float, sola
 
 private fun DrawScope.centre(tm: androidx.compose.ui.text.TextMeasurer, text: String, dy: Float, sp: Float, color: Color, w: FontWeight, s: Float) {
     if (text.isEmpty()) return
-    val m = tm.measure(text, TextStyle(color = color, fontSize = (sp * s).toSp(), fontWeight = w, fontFeatureSettings = "tnum"))
+    val m = tm.measure(text, TextStyle(color = color, fontSize = (sp * s).toSp(), fontWeight = w, fontFeatureSettings = "tnum", fontFamily = com.solarmonitor.app.ui.theme.GeistMono))
     drawText(m, topLeft = Offset(C * s - m.size.width / 2f, (C + dy) * s - m.size.height / 2f))
 }
 
@@ -284,15 +285,28 @@ private fun Details(sel: Sel?, mix: List<HourMix>, outs: List<Outage>, recs: Lis
                 items += Item(e.batt, "Battery ${it.socFrom}% → ${it.socTo}%")
             }
         }
-        null -> {}
+        null -> {
+            // nothing picked: the whole day, like the web
+            val solar = mix.sumOf { it.solarWh }; val batt = mix.sumOf { it.battWh }; val grid = mix.sumOf { it.gridWh }
+            val pv = mix.sumOf { it.pvWh }; val mins = mix.sumOf { it.minutes }
+            val total = solar + batt + grid
+            fun pct(v: Double) = if (total > 0) (v / total * 100).roundToInt() else 0
+            val off = outs.sumOf { it.minutes }
+            head = "The whole day" + if (mins > 0) " · home used ${fmtWh(total)}" else ""
+            if (mins == 0) items += Item(cs.outline, "The monitor has no data for this day.")
+            else {
+                items += Item(e.solar, "Solar: ${pct(solar)}% of home use · made ${fmtWh(pv)} in total")
+                items += Item(e.batt, "Battery: ${pct(batt)}% (${fmtWh(batt)})")
+                items += Item(e.grid, "Grid: ${pct(grid)}% (${fmtWh(grid)})")
+                items += Item(e.crit, if (outs.isNotEmpty()) "${outs.size} outage${if (outs.size > 1) "s" else ""}, ${fmtDuration(off.toDouble())} without grid" else "No outages", hatch = true)
+            }
+        }
     }
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cs.surfaceContainerHigh).padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)) {
-        if (sel == null) {
-            Text("Tap an hour or a red part of the ring to see what happened then.", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        run {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.heightIn(min = 36.dp)) {
                 Text(head, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                TextButton(onClick = onClear) { Text("Clear") }
+                if (sel != null) TextButton(onClick = onClear) { Text("Clear") }
             }
             items.forEach { it ->
                 Row(Modifier.padding(vertical = 3.dp, horizontal = 0.dp), verticalAlignment = Alignment.Top) {
@@ -304,9 +318,11 @@ private fun Details(sel: Sel?, mix: List<HourMix>, outs: List<Outage>, recs: Lis
                         } else drawCircle(it.color)
                     }
                     Spacer(Modifier.size(10.dp))
-                    Text(it.text, style = MaterialTheme.typography.bodyMedium, color = cs.onSurface, modifier = Modifier.padding(end = 8.dp))
+                    Text(it.text, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, modifier = Modifier.padding(end = 8.dp))
                 }
             }
+            if (sel == null) Text("Point at or tap an hour, or a red part of the ring, to see what happened then.", style = MaterialTheme.typography.bodySmall,
+                color = cs.outline, modifier = Modifier.padding(top = 6.dp, end = 8.dp))
         }
     }
 }

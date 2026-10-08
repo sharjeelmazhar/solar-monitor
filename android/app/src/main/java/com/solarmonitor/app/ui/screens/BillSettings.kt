@@ -97,7 +97,7 @@ fun BillSettingsCard(repo: Repository, saved: BillConfig?, toast: (String) -> Un
         }
     }
 
-    SectionCard("Bill (IESCO)", info = "Copy these from your latest IESCO bill; the estimate then follows the same steps as the bill. Saved on the monitor, so the web dashboard and other phones use the same values.") {
+    SectionCard("Bill settings", sub = "IESCO home tariff · saved on the monitor, shared with the web dashboard", info = "Copy these from your latest IESCO bill; the estimate then follows the same steps as the bill. Saved on the monitor, so the web dashboard and other phones use the same values.") {
         BillGuideButton()
         Text("Your status (printed on the bill)", style = MaterialTheme.typography.labelLarge)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 6.dp)) {

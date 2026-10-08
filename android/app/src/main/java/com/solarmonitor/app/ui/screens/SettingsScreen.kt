@@ -1,5 +1,6 @@
 package com.solarmonitor.app.ui.screens
 
+import com.solarmonitor.app.ui.components.Segmented
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -67,9 +68,6 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
 
     var host by remember(s.host) { mutableStateOf(s.host) }
     var searching by remember { mutableStateOf(false) }
-    var name by remember(info?.name) { mutableStateOf(info?.name?.takeIf { it != "Solar" } ?: "") }
-    var ah by remember(info?.battAh) { mutableStateOf(info?.battAh?.takeIf { it > 0 }?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "") }
-    var saving by remember { mutableStateOf(false) }
 
     val pm = ctx.getSystemService(PowerManager::class.java)
     var unrestricted by remember { mutableStateOf(pm.isIgnoringBatteryOptimizations(ctx.packageName)) }
@@ -141,56 +139,6 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
             }
         }
-        item(key = "device") {
-            SectionCard("Your system") {
-                Text("Saved on the monitor, so the web dashboard uses them too.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.padding(4.dp))
-                OutlinedTextField(name, { name = it }, label = { Text("Name") }, placeholder = { Text("Solar") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(ah, { ah = it }, label = { Text("Battery capacity (Ah)") }, singleLine = true, modifier = Modifier.weight(1f),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                }
-                Button(onClick = {
-                    saving = true
-                    scope.launch {
-                        val ok = repo.saveDeviceSettings(name, ah.toDoubleOrNull() ?: 0.0, info?.tariff ?: 0.0)
-                        saving = false
-                        toast(if (ok) "Saved to monitor" else "Couldn't reach the monitor")
-                    }
-                }, enabled = !saving && info != null, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) { Text(if (saving) "Saving…" else "Save to monitor") }
-            }
-        }
-        item(key = "bill") { BillSettingsCard(repo, bill, toast) }
-        item(key = "look") {
-            SectionCard("Appearance") {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    listOf("System", "Light", "Dark").forEachIndexed { i, l ->
-                        SegmentedButton(selected = s.theme == i, onClick = { repo.prefs.update { it.copy(theme = i) } }, shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) }
-                    }
-                }
-                Spacer(Modifier.padding(4.dp))
-                Toggle("3D energy core", "Animated core behind the power flow on the Live tab", s.fx3d) { on -> repo.prefs.update { it.copy(fx3d = on) } }
-                Toggle("Ignore small battery flows", "At full charge the inverter often takes a little from the battery. Below the limit it shows as idle, not charging or discharging.", s.battIdleOn) { on -> repo.prefs.update { it.copy(battIdleOn = on) } }
-                if (s.battIdleOn) {
-                    var w by remember(s.battIdleW) { mutableStateOf(s.battIdleW.toFloat()) }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Slider(w, { w = it }, valueRange = 20f..300f, steps = 27, onValueChangeFinished = { repo.prefs.update { it.copy(battIdleW = w.toInt()) } }, modifier = Modifier.weight(1f))
-                        Text("${w.toInt()} W", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 12.dp))
-                    }
-                }
-                Spacer(Modifier.padding(6.dp))
-                Text("Time format", style = MaterialTheme.typography.labelLarge)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                    listOf(true to "2:30 PM", false to "14:30").forEachIndexed { i, (v, l) ->
-                        SegmentedButton(selected = s.hour12 == v, onClick = { repo.prefs.update { it.copy(hour12 = v) } }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(l) }
-                    }
-                }
-                if (Build.VERSION.SDK_INT >= 31) {
-                    Spacer(Modifier.padding(4.dp))
-                    Toggle("Wallpaper colours", "Match your phone's Material You / One UI colour palette", s.dynamicColor) { on -> repo.prefs.update { it.copy(dynamicColor = on) } }
-                }
-            }
-        }
         item(key = "about") {
             val v = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull()
             Text("Solar Monitor app $v · all data stays on your home network", style = MaterialTheme.typography.bodySmall,
@@ -208,4 +156,62 @@ private fun Toggle(title: String, subtitle: String, checked: Boolean, onChange: 
         }
         Switch(checked, onChange)
     }
+}
+
+/** Web System page: "Your system" (saved on the monitor, shared with the web dashboard). */
+@Composable
+fun YourSystemCard(repo: Repository, toast: (String) -> Unit) {
+    val info by repo.info.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var name by remember(info?.name) { mutableStateOf(info?.name?.takeIf { it != "Solar" } ?: "") }
+    var ah by remember(info?.battAh) { mutableStateOf(info?.battAh?.takeIf { it > 0 }?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() } ?: "") }
+    var saving by remember { mutableStateOf(false) }
+    SectionCard("Your system", sub = "saved on the monitor, shared with the web dashboard") {
+        OutlinedTextField(name, { name = it.take(30) }, label = { Text("Name") }, placeholder = { Text("Solar Monitor") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(ah, { ah = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Battery capacity (Ah)") }, placeholder = { Text("e.g. 200") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth(0.5f).padding(top = 8.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+        Button(onClick = {
+            saving = true
+            scope.launch {
+                val ok = repo.saveDeviceSettings(name.ifBlank { "Solar" }, ah.toDoubleOrNull() ?: 0.0, info?.tariff ?: 0.0)
+                saving = false
+                toast(if (ok) "Saved" else "Could not reach the monitor")
+            }
+        }, enabled = !saving && info != null, modifier = Modifier.padding(top = 12.dp)) { Text(if (saving) "Saving…" else "Save") }
+    }
+}
+
+/** Web System page: "Appearance" (theme, time format, battery idle limit, 3D core). Kept on this phone. */
+@Composable
+fun AppearanceCard(repo: Repository) {
+    val s by repo.prefs.state.collectAsStateWithLifecycle()
+    SectionCard("Appearance") {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Theme", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Segmented(s.theme, listOf(0 to "System", 1 to "Light", 2 to "Dark"), { v -> repo.prefs.update { it.copy(theme = v) } })
+        }
+        Spacer(Modifier.padding(6.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Time format", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Segmented(s.hour12, listOf(true to "2:30 PM", false to "14:30"), { v -> repo.prefs.update { it.copy(hour12 = v) } })
+        }
+        Spacer(Modifier.padding(6.dp))
+        Toggle("Ignore small battery flows", "At full charge the inverter often takes a little from the battery. Below the limit it shows as idle, not charging or discharging.", s.battIdleOn) { on -> repo.prefs.update { it.copy(battIdleOn = on) } }
+        if (s.battIdleOn) {
+            var w by remember(s.battIdleW) { mutableStateOf(s.battIdleW.toFloat()) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Slider(w, { w = it }, valueRange = 20f..300f, steps = 27, onValueChangeFinished = { repo.prefs.update { it.copy(battIdleW = w.toInt()) } }, modifier = Modifier.weight(1f))
+                Text("${w.toInt()} W", style = MaterialTheme.typography.labelLarge.merge(com.solarmonitor.app.ui.theme.NumberStyle), modifier = Modifier.padding(start = 12.dp))
+            }
+        }
+        Toggle("3D energy core", "Animated background behind the flow diagram. Turn it off on slow phones.", s.fx3d) { on -> repo.prefs.update { it.copy(fx3d = on) } }
+    }
+}
+
+/** Web System page: "Bill settings". */
+@Composable
+fun BillSettingsSection(repo: Repository, toast: (String) -> Unit) {
+    val bill by repo.bill.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { if (bill == null) repo.loadBill() }
+    BillSettingsCard(repo, bill, toast)
 }

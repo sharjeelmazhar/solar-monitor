@@ -173,7 +173,7 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
                 color = if (big) cs.onSurface else cs.onSurfaceVariant,
                 fontSize = ((if (big) 19f else 12f) * s).toSp(),
                 fontWeight = if (big) FontWeight.Bold else FontWeight.Medium,
-                fontFeatureSettings = "tnum",
+                fontFeatureSettings = "tnum", fontFamily = if (big) com.solarmonitor.app.ui.theme.GeistMono else com.solarmonitor.app.ui.theme.Geist,
             )
             val r = tm.measure(text, style)
             drawText(r, topLeft = Offset(at.x * s - r.size.width / 2f, at.y * s - r.size.height / 2f))
@@ -184,7 +184,7 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
             label(if (x.gridOn) (if (x.gridW > 0) fmtW(x.gridW) else "${x.gridV.toInt()} V") else "Off", Offset(GRID.x, GRID.y - 48), true)
             label(if (x.gridOn) (if (x.gridW > 0) "Grid · in use" else "Grid · standby") else "Grid off", Offset(GRID.x, GRID.y + 46), false)
             label("${x.battPct}%", Offset(BATT.x, BATT.y + 50), true)
-            label(when (Power.batt(x, idle)) { Power.Batt.Charging -> "Charging"; Power.Batt.Discharging -> "Discharging"; else -> if (x.battPct >= 99) "Full" else "Idle" }, Offset(BATT.x, BATT.y - 46), false)
+            label(when (Power.batt(x, idle)) { Power.Batt.Charging -> "Charging ${fmtW(x.battW)}"; Power.Batt.Discharging -> "Discharging ${fmtW(-x.battW)}"; else -> if (x.battPct >= 99) "Full" else "Idle" }, Offset(BATT.x, BATT.y - 46), false)
             label(fmtW(x.loadW), Offset(HOME.x, HOME.y + 50), true)
             label("Home · ${x.loadPct}%", Offset(HOME.x, HOME.y - 46), false)
         }

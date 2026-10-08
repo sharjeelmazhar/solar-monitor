@@ -21,7 +21,7 @@ data class Settings(
     val battIdleW: Int = 100,
     val fx3d: Boolean = true,            // 3D energy core behind the power flow
     val theme: Int = 0,                  // 0 system, 1 light, 2 dark
-    val dynamicColor: Boolean = true,
+    val dynamicColor: Boolean = false,   // off: same colours as the web app
     val askedNotifications: Boolean = false,
     val hour12: Boolean = true,          // 12-hour clock (AM/PM)
 ) {
@@ -54,7 +54,7 @@ class Prefs(context: Context) {
             battIdleW = sp.getInt("battIdleW", d.battIdleW),
             fx3d = sp.getBoolean("fx3d", d.fx3d),
             theme = sp.getInt("theme", d.theme),
-            dynamicColor = sp.getBoolean("dynamicColor", d.dynamicColor),
+            dynamicColor = sp.getBoolean("dynamicColor2", d.dynamicColor),
             askedNotifications = sp.getBoolean("askedNotifications", d.askedNotifications),
             hour12 = sp.getBoolean("hour12", d.hour12),
         )
@@ -76,7 +76,7 @@ class Prefs(context: Context) {
             .putInt("battIdleW", s.battIdleW)
             .putBoolean("fx3d", s.fx3d)
             .putInt("theme", s.theme)
-            .putBoolean("dynamicColor", s.dynamicColor)
+            .putBoolean("dynamicColor2", s.dynamicColor)
             .putBoolean("askedNotifications", s.askedNotifications)
             .putBoolean("hour12", s.hour12)
             .apply()

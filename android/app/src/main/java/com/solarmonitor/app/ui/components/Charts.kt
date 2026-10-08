@@ -9,6 +9,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.rounded.OpenInFull
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -116,7 +121,7 @@ private fun chartColors() = MaterialTheme.colorScheme.let {
 private fun DrawScope.tooltip(tm: TextMeasurer, c: ChartColors, x: Float, top: Float, title: String, rows: List<Triple<Color, String, String>>) {
     val d = density
     val small = TextStyle(color = c.tipSub, fontSize = 11.sp)
-    val body = TextStyle(color = c.tipText, fontSize = 12.sp, fontWeight = FontWeight.Medium, fontFeatureSettings = "tnum")
+    val body = TextStyle(color = c.tipText, fontSize = 12.sp, fontWeight = FontWeight.Medium, fontFeatureSettings = "tnum", fontFamily = com.solarmonitor.app.ui.theme.GeistMono)
     val tt = tm.measure(title, small)
     val names = rows.map { tm.measure(it.second, body) }
     val vals = rows.map { tm.measure(it.third, body.copy(fontWeight = FontWeight.Bold)) }
@@ -151,7 +156,7 @@ fun LineChart(
     val (hover, setHover) = rememberHover()
     Canvas(modifier.fillMaxWidth().height(height).hoverInput(setHover)) {
         val d = density
-        val label = TextStyle(color = cc.text, fontSize = 11.sp, fontFeatureSettings = "tnum")
+        val label = TextStyle(color = cc.text, fontSize = 11.sp, fontFeatureSettings = "tnum", fontFamily = com.solarmonitor.app.ui.theme.GeistMono)
         val ax = axis(series, yMin, yMax, maxOf(2, ((size.height - 30 * d) / (46 * d)).roundToInt()), minRange)
         val yLabels = generateSequence(ax.lo) { it + ax.step }.takeWhile { it <= ax.hi + ax.step / 2 }.toList()
         val left = (yLabels.maxOf { tm.measure(yFmt(it), label).size.width } + 8 * d)
@@ -231,15 +236,19 @@ fun LineChart(
 fun BarChart(
     labels: List<String>, series: List<ChartSeries>, modifier: Modifier = Modifier, height: Dp = 240.dp,
     yFmt: (Float) -> String, valueFmt: (Float) -> String, title: (Int) -> String,
+    stacks: List<List<String>>? = null,   // series names drawn on top of each other in one bar (web BarChart stacks)
 ) {
+    // each group is one bar per label; a group with several series is stacked bottom to top
+    val groups = stacks?.map { g -> g.mapNotNull { n -> series.firstOrNull { it.name == n } } }?.filter { it.isNotEmpty() } ?: series.map { listOf(it) }
+    val sums = groups.map { g -> ChartSeries(g.first().name, g.first().color, FloatArray(labels.size) { i -> g.sumOf { s -> s.values[i].takeIf { v -> !v.isNaN() && v > 0 }?.toDouble() ?: 0.0 }.toFloat() }) }
     val tm = rememberTextMeasurer()
     val cc = chartColors()
     val (hover, setHover) = rememberHover()
     Canvas(modifier.fillMaxWidth().height(height).hoverInput(setHover)) {
         val d = density
         val n = labels.size
-        val label = TextStyle(color = cc.text, fontSize = 11.sp, fontFeatureSettings = "tnum")
-        val ax = axis(series, null, null, maxOf(2, ((size.height - 30 * d) / (46 * d)).roundToInt()), 1000f)
+        val label = TextStyle(color = cc.text, fontSize = 11.sp, fontFeatureSettings = "tnum", fontFamily = com.solarmonitor.app.ui.theme.GeistMono)
+        val ax = axis(sums, null, null, maxOf(2, ((size.height - 30 * d) / (46 * d)).roundToInt()), 1000f)
         val yLabels = generateSequence(ax.lo) { it + ax.step }.takeWhile { it <= ax.hi + ax.step / 2 }.toList()
         val left = (yLabels.maxOf { tm.measure(yFmt(it), label).size.width } + 8 * d)
         val right = 4 * d; val top = 8 * d; val bottom = 22 * d
@@ -257,22 +266,28 @@ fun BarChart(
             val r = tm.measure(labels[i], label)
             drawText(r, topLeft = Offset(left + (i + .5f) * gw - r.size.width / 2, size.height - r.size.height))
         }
-        val k = series.size
+        val k = groups.size
         val gap = 2 * d
         val bw = ((gw * 0.78f - (k - 1) * gap) / k).coerceIn(2 * d, 22 * d)
         val hoverIdx = hover?.let { ((it - left) / gw).toInt() }?.takeIf { it in 0 until n }
         if (hoverIdx != null) drawRect(cc.text.copy(alpha = 0.07f), Offset(left + hoverIdx * gw, top), Size(gw, ph))
-        series.forEachIndexed { j, s ->
+        groups.forEachIndexed { j, g ->
             for (i in 0 until n) {
-                val v = s.values[i]
-                if (v.isNaN() || v <= 0) continue
                 val x = left + (i + .5f) * gw - (k * bw + (k - 1) * gap) / 2 + j * (bw + gap)
-                val y = Y(v); val h = Y(0f) - y
-                val r = minOf(4 * d, bw / 2, h)
-                val p = Path().apply {
-                    moveTo(x, Y(0f)); lineTo(x, y + r); quadraticTo(x, y, x + r, y); lineTo(x + bw - r, y); quadraticTo(x + bw, y, x + bw, y + r); lineTo(x + bw, Y(0f)); close()
+                var base = 0f
+                val parts = g.filter { val v = it.values[i]; !v.isNaN() && v > 0 }
+                parts.forEachIndexed { pi, s ->
+                    val v = s.values[i]
+                    val yb = Y(base) - if (pi > 0) gap else 0f   // 2 dp surface gap between stacked segments
+                    val y = Y(base + v); val h = yb - y
+                    if (h <= 0) { base += v; return@forEachIndexed }
+                    val r = if (pi == parts.lastIndex) minOf(4 * d, bw / 2, h) else 0f   // only the top end is rounded
+                    val p = Path().apply {
+                        moveTo(x, yb); lineTo(x, y + r); quadraticTo(x, y, x + r, y); lineTo(x + bw - r, y); quadraticTo(x + bw, y, x + bw, y + r); lineTo(x + bw, yb); close()
+                    }
+                    drawPath(p, s.color)
+                    base += v
                 }
-                drawPath(p, s.color)
             }
         }
         if (hoverIdx != null) {
@@ -293,6 +308,43 @@ fun GridStrip(minutes: List<MinRec>, dayStart: Long, color: Color, modifier: Mod
         for (m in minutes) {
             val x = (m.t - dayStart) / 86_400_000f * size.width
             drawRect(if (m.gridOn) color.copy(alpha = 0.75f) else off, Offset(x, 0f), Size(w + 0.6f, size.height))
+        }
+    }
+}
+
+/**
+ * The web ChartCard: a card with a chart that can be opened full screen. [chart] draws the chart at the given height;
+ * [legend] (optional) sits above it in both places.
+ */
+@Composable
+fun ChartCard(
+    title: String, sub: String? = null, info: String? = null,
+    action: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = null,
+    legend: (@Composable () -> Unit)? = null,
+    chart: @Composable (Dp) -> Unit,
+) {
+    var full by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    SectionCard(title, sub = sub, info = info, action = {
+        action?.invoke(this)
+        androidx.compose.material3.FilledTonalIconButton(onClick = { full = true }) {
+            androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Rounded.OpenInFull, "Open full screen", Modifier.size(18.dp))
+        }
+    }) {
+        legend?.let { it(); androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp)) }
+        chart(220.dp)
+    }
+    if (full) androidx.compose.ui.window.Dialog(onDismissRequest = { full = false },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        androidx.compose.material3.Surface(Modifier.fillMaxWidth().padding(12.dp), shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            androidx.compose.foundation.layout.Column(Modifier.padding(16.dp)) {
+                androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.IconButton(onClick = { full = false }) { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Rounded.Close, "Close") }
+                }
+                legend?.let { it(); androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp)) }
+                val h = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 260).coerceIn(300, 620)
+                chart(h.dp)
+            }
         }
     }
 }

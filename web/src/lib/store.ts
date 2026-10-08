@@ -40,8 +40,10 @@ function onLive(d: Live) {
   const p: Partial<State> = { live: d, lastRxAt: now }
   if (!prev || d.seq !== prev.seq) {
     if (prev && state.lastMsgAt && d.seq > prev.seq && d.seq - prev.seq < 20) {
-      // readings per second, even when unchanged readings were not pushed
-      intervals.push((now - state.lastMsgAt) / (d.seq - prev.seq))
+      // time per reading, even when unchanged readings were not pushed. The monitor's own timestamps are used when it
+      // has a clock, so pushes that arrive bunched up (slow Wi-Fi, buffering) don't distort it.
+      const dt = d.t && prev.t && d.t > prev.t ? d.t - prev.t : now - state.lastMsgAt
+      intervals.push(dt / (d.seq - prev.seq))
       if (intervals.length > 12) intervals.shift()
       p.intervalMs = intervals.reduce((a, b) => a + b, 0) / intervals.length
     }

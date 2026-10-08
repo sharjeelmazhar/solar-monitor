@@ -1,5 +1,6 @@
 package com.solarmonitor.app.ui.screens
 
+import com.solarmonitor.app.ui.components.Segmented
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -52,6 +53,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import com.solarmonitor.app.data.Info
 import com.solarmonitor.app.data.Live
 import com.solarmonitor.app.data.Repository
+import com.solarmonitor.app.ui.components.ChartCard
+import androidx.compose.foundation.border
+import androidx.compose.ui.text.font.FontWeight
 import com.solarmonitor.app.ui.components.ChartLegend
 import com.solarmonitor.app.ui.components.ChartSeries
 import com.solarmonitor.app.ui.components.Grid
@@ -88,7 +92,8 @@ fun LiveScreen(repo: Repository, padding: PaddingValues, wide: Boolean) {
 
     ScreenList(padding) {
         full("flow") {
-            SectionCard("Power flow", info = FLOW_INFO, action = { d?.takeIf { it.ever }?.let { AssistChip(onClick = {}, label = { Text(Power.label(it, idleW)) }) } }) {
+            SectionCard("Energy flow", info = FLOW_INFO, sub = d?.takeIf { it.ever }?.let { Power.sentence(it, idleW) } ?: "Waiting for the inverter…",
+                action = { d?.takeIf { it.ever }?.let { SourcePill(Power.label(it, idleW)) } }) {
                 Box(contentAlignment = Alignment.Center) {
                     // offline: last values stay visible but faded and still, with a note on top
                     val fade = if (!offline) Modifier else Modifier.alpha(0.35f).then(if (Build.VERSION.SDK_INT >= 31) Modifier.blur(2.dp) else Modifier)
@@ -106,7 +111,7 @@ fun LiveScreen(repo: Repository, padding: PaddingValues, wide: Boolean) {
         }
         val alerts = if (offline) emptyList() else alertItems(x, idleW)
         if (alerts.any { it.first > 0 }) full("alerts") { AlertsCard(alerts.filter { it.first > 0 }) }
-        full("now") { Box(if (offline) Modifier.alpha(0.45f) else Modifier) { NowCard(x, info, e, if (wide) 3 else 2, idleW) } }
+        full("now") { Box(if (offline) Modifier.alpha(0.45f) else Modifier) { NowCard(x, info, e, 2, idleW, repo) } }
         item(key = "today") { TodayCard(x, info) }
         item(key = "chart") { LiveChartCard(repo, e) }
     }
@@ -131,30 +136,31 @@ private fun OfflineBadge(staleMs: Long, t: Long) {
 }
 
 @Composable
-private fun NowCard(d: Live, info: Info?, e: EnergyColors, cols: Int, idleW: Int) {
+private fun NowCard(d: Live, info: Info?, e: EnergyColors, cols: Int, idleW: Int, repo: Repository) {
     val bs = Power.batt(d, idleW)
     val rated = info?.rated
     val battFill = when { d.battPct <= 20 -> e.crit; d.battPct <= 45 -> e.warn; else -> e.batt }
-    SectionCard("Right now") {
+    val interval by repo.updateInterval.collectAsStateWithLifecycle()
+    SectionCard("Right now", sub = if (interval > 0) "updating every ${fmt1(interval / 1000.0)} s" else "live") {
         Grid(cols, listOf(
             { m -> KpiTile("Solar", e.solar, fmtW(d.pvW), "${fmt1(d.pvV)} V · ${fmt1(d.pvA)} A", "Peak today ${fmtW(d.today.pvPeak)}\n" + Sun.times().let { "Sunrise ${hhmm(it.rise)} · Sunset ${hhmm(it.set)}" }, m) },
             { m ->
                 KpiTile("Battery", e.batt, "${d.battPct} %",
                     "${fmt2(d.battV)} V · ${fmt1(kotlin.math.abs(Power.battAmps(d)))} A · " + when (bs) { Power.Batt.Charging -> "charging ${fmtW(d.battW)}"; Power.Batt.Discharging -> "giving ${fmtW(-d.battW)}"; else -> "idle" },
-                    battEta(d, info, rated?.battV) ?: if ((info?.battAh ?: 0.0) == 0.0) "Set battery Ah in Settings" else " ",
+                    battEta(d, info, rated?.battV) ?: if ((info?.battAh ?: 0.0) == 0.0) "Add battery Ah in System" else " ",
                     m, progress = d.battPct / 100f, progressColor = battFill)
             },
-            { m -> KpiTile("Home load", e.load, fmtW(d.loadW), "${d.loadPct}% of capacity · ${d.loadVA} VA", "${fmt1(d.outV)} V · ${fmt1(d.outHz)} Hz", m) },
+            { m -> KpiTile("Home", e.load, fmtW(d.loadW), "${d.loadPct}% load · ${d.loadVA} VA", "${fmt1(d.outV)} V · ${fmt1(d.outHz)} Hz", m, progress = d.loadPct / 100f) },
             { m ->
-                if (d.gridOn) KpiTile("Grid", e.grid, "${d.gridV.roundToInt()} V", "${fmt1(d.gridHz)} Hz · available", if (d.gridW > 0) "Using ≈ ${fmtW(d.gridW)}" else "Not being used", m)
-                else KpiTile("Grid", e.grid, "Off", "No grid supply", if (d.today.outages > 0) "${d.today.outages} outage${if (d.today.outages > 1) "s" else ""} today" else " ", m, smallValue = false)
+                if (d.gridOn) KpiTile("Grid (WAPDA)", e.grid, "${d.gridV.roundToInt()} V", "${fmt1(d.gridHz)} Hz · available", if (d.gridW > 15) "Importing ≈ ${fmtW(d.gridW)}" else "Not in use", m)
+                else KpiTile("Grid (WAPDA)", e.grid, "Off", "No grid supply", if (d.today.outages > 0) "${d.today.outages} outage${if (d.today.outages > 1) "s" else ""} today" else " ", m, smallValue = false)
             },
             { m -> KpiTile("Inverter", e.inv, "${d.tempC} °C", Power.sentence(d, idleW), "Mode: ${Decode.modeName(d.mode)} · DC bus ${d.busV} V", m) },
             { m ->
                 KpiTile("Charging", MaterialTheme.colorScheme.outline,
-                    when { d.solarCharging && d.gridCharging -> "Solar + Grid"; d.solarCharging -> "From solar"; d.gridCharging -> "From grid"; else -> "Not charging" },
+                    when { d.solarCharging && d.gridCharging -> "Solar + grid"; d.solarCharging -> "From solar"; d.gridCharging -> "From grid"; else -> "Not charging" },
                     if (bs == Power.Batt.Charging) "${fmtW(d.battW)} · ${fmt1(Power.battAmps(d))} A into battery" else "",
-                    rated?.let { "Float ${it.float} V · Bulk ${it.bulk} V" } ?: " ", m, smallValue = true)
+                    rated?.let { "Float ${it.float} V" } ?: " ", m, smallValue = true)
             },
         ))
     }
@@ -175,16 +181,17 @@ private fun battEta(d: Live, info: Info?, ratedV: Double?): String? {
 @Composable
 private fun TodayCard(d: Live, info: Info?) {
     val t = d.today
-    SectionCard("Today", action = { if (t.onlineMin > 0) Text("monitored ${fmtDuration(t.onlineMin.toDouble())}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }) {
+    val e = LocalEnergy.current
+    SectionCard("Today", sub = if (t.onlineMin > 0) "monitored ${fmtDuration(t.onlineMin.toDouble())}" else null) {
         Grid(2, listOf(
-            { m -> StatTile("Solar produced", fmtWh(t.pvWh), m) },
-            { m -> StatTile("Home used", fmtWh(t.loadWh), m) },
-            { m -> StatTile("From grid (est.)", fmtWh(t.gridWh), m, info = GRID_EST_INFO) },
-            { m -> StatTile("Battery in / out", "${fmtWh(t.chgWh)} / ${fmtWh(t.disWh)}", m) },
-            { m -> StatTile("Self-powered", if (t.loadWh > 1) "${((1 - t.gridWh / t.loadWh).coerceIn(0.0, 1.0) * 100).roundToInt()}%" else "–", m, info = "Share of the home's energy today that did not come from the grid (solar and battery).") },
+            { m -> StatTile("Solar produced", fmtWh(t.pvWh), m, tone = e.solar) },
+            { m -> StatTile("Home used", fmtWh(t.loadWh), m, tone = e.load) },
+            { m -> StatTile("From grid (est.)", fmtWh(t.gridWh), m, info = GRID_EST_INFO, tone = e.grid) },
+            { m -> StatTile("Battery in / out", fmtWh(t.chgWh), m, hint = "out ${fmtWh(t.disWh)}", tone = e.batt) },
+            { m -> StatTile("Self-powered", if (t.loadWh > 1) "${((1 - t.gridWh / t.loadWh).coerceIn(0.0, 1.0) * 100).roundToInt()} %" else "–", m, info = "Share of the home's energy today that did not come from the grid (solar and battery).") },
             { m -> StatTile("Grid available", if (t.onlineMin > 0) fmtDuration(t.gridOnMin.toDouble()) else "–", m) },
             { m -> StatTile("Grid outages", "${t.outages}", m) },
-            { m -> StatTile("From solar + battery", String.format(Locale.US, "%.2f units", maxOf(0.0, t.loadWh - t.gridWh) / 1000), m, hint = "home use not from the grid") },
+            { m -> StatTile("From solar + battery", String.format(Locale.US, "%.2f units", maxOf(0.0, t.loadWh - t.gridWh) / 1000), m, hint = "home use not from the grid", tone = e.batt) },
         ))
     }
 }
@@ -201,22 +208,19 @@ private fun LiveChartCard(repo: Repository, e: EnergyColors) {
     val all = listOf(
         ChartSeries("Solar", e.solar, FloatArray(pts.size) { pts[it].pvW.toFloat() }, area = true),
         ChartSeries("Home", e.load, FloatArray(pts.size) { pts[it].loadW.toFloat() }),
-        ChartSeries("Battery", e.batt, FloatArray(pts.size) { pts[it].battW.toFloat() }),
-        ChartSeries("Grid", e.grid, FloatArray(pts.size) { pts[it].gridW.toFloat() }),
+        ChartSeries("Battery (+ in / − out)", e.batt, FloatArray(pts.size) { pts[it].battW.toFloat() }),
+        ChartSeries("Grid (est.)", e.grid, FloatArray(pts.size) { pts[it].gridW.toFloat() }),
     )
-    SectionCard("Live", action = {
-        SingleChoiceSegmentedButtonRow {
-            listOf(5, 15).forEachIndexed { i, m ->
-                SegmentedButton(selected = minutes == m, onClick = { minutes = m }, shape = SegmentedButtonDefaults.itemShape(i, 2), icon = {}) { Text("$m min") }
-            }
-        }
-    }) {
-        ChartLegend(all.map { it.name to it.color }, hidden) { n -> hidden = if (n in hidden) hidden - n else hidden + n }
-        Spacer(Modifier.size(6.dp))
-        LineChart(LongArray(pts.size) { pts[it].t }, all.filter { it.name !in hidden }, from, now,
+    ChartCard("Live power", sub = "every reading from the inverter",
+        action = {
+            Segmented(minutes, listOf(5 to "5 min", 15 to "15 min"), { minutes = it })
+            Spacer(Modifier.width(8.dp))
+        },
+        legend = { ChartLegend(all.map { it.name to it.color }, hidden) { n -> hidden = if (n in hidden) hidden - n else hidden + n } },
+    ) { h ->
+        LineChart(LongArray(pts.size) { pts[it].t }, all.filter { it.name !in hidden }, from, now, height = h,
             yFmt = { if (kotlin.math.abs(it) >= 1000) "${fmt1(it / 1000.0)}k" else "${it.roundToInt()}" }, valueFmt = { fmtW(it) },
             title = { com.solarmonitor.app.ui.hhmmss(pts[it].t) })
-        Text("Battery: above zero = charging, below = supplying the home", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
@@ -242,7 +246,7 @@ fun AlertsCard(items: List<Pair<Int, String>>) {
     val e = LocalEnergy.current
     SectionCard("Alerts") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (items.isEmpty()) AlertRow(Icons.Rounded.CheckCircle, e.good, "All good — no warnings from the inverter")
+            if (items.isEmpty()) AlertRow(Icons.Rounded.CheckCircle, e.good, "All good: no warnings from the inverter")
             items.forEach { (sev, text) ->
                 when (sev) {
                     2 -> AlertRow(Icons.Rounded.Error, e.crit, text)
@@ -268,3 +272,12 @@ private fun AlertRow(icon: androidx.compose.ui.graphics.vector.ImageVector, tint
 
 const val GRID_EST_INFO = "The inverter does not report grid power directly. The monitor works it out from the home load minus what solar and the battery supply, so treat it as a close estimate. Your IESCO meter is the final word."
 private const val FLOW_INFO = "Dots move in the direction energy flows, faster and denser with more power. The label on the right says what is powering the home right now.\n\nBattery idle: at full charge the inverter often draws a little from the battery even when solar covers the home. Flows under the limit in Settings (100 W by default) are shown as idle."
+
+/** The pill on the right of the Energy flow card: what is powering the home right now. */
+@Composable
+private fun SourcePill(text: String) {
+    Box(Modifier.clip(RoundedCornerShape(50)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
+        .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 12.dp, vertical = 5.dp)) {
+        Text(text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+    }
+}

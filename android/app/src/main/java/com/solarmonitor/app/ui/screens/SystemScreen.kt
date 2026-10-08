@@ -1,5 +1,7 @@
 package com.solarmonitor.app.ui.screens
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
@@ -33,7 +35,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
-fun SystemScreen(repo: Repository, padding: PaddingValues) {
+fun SystemScreen(repo: Repository, padding: PaddingValues, toast: (String) -> Unit) {
     val d by repo.live.collectAsStateWithLifecycle()
     val info by repo.info.collectAsStateWithLifecycle()
     val interval by repo.updateInterval.collectAsStateWithLifecycle()
@@ -43,32 +45,35 @@ fun SystemScreen(repo: Repository, padding: PaddingValues) {
     ScreenList(padding) {
         d?.takeIf { it.ever }?.let { full("alerts") { AlertsCard(alertItems(it)) } }
         item(key = "inv") { androidx.compose.foundation.layout.Column { InverterSettingsCard(repo) } }
+        item(key = "you") { YourSystemCard(repo, toast) }
+        item(key = "look") { AppearanceCard(repo) }
         item(key = "dev") {
             val i = info
             val p = d
-            SectionCard("Monitor device") {
-                if (i == null) Text("Not connected") else InfoRows(listOf(
+            val appV = runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: ""
+            SectionCard("Monitor device", sub = (if (i != null) "firmware v${i.fw}" else "not connected") + " · app v$appV") {
+                if (i != null) InfoRows(listOf(
                     "Address" to "${i.ip} · ${i.host}.local",
                     "Wi-Fi" to "${i.ssid} · ${i.rssi} dBm (${when { i.rssi > -60 -> "excellent"; i.rssi > -70 -> "good"; i.rssi > -80 -> "fair"; else -> "weak" }})",
                     "Up for" to fmtDuration(i.uptime / 60.0),
                     "Clock" to if (i.timeOk) "synced" else "not set",
-                    "History stored" to if (i.histFrom > 0) "since ${dayLabel(i.histFrom)}" else "starting today",
+                    "History stored since" to if (i.histFrom > 0) dayLabel(i.histFrom) else "today",
                     "Storage" to "${i.fsUsed / 1024} / ${i.fsTotal / 1024} KB",
-                    "Readings" to (p?.let { "${it.okCount} ok · ${it.failCount} failed · ${it.crcErrors} CRC" } ?: "–"),
+                    "Free memory" to "${i.heap / 1024} KB",
+                    "Readings" to (p?.let { "${"%,d".format(it.okCount)} ok · ${it.failCount} failed · ${it.crcErrors} CRC" } ?: "–"),
                     "Read cycle" to (p?.let { "${it.pollMs} ms" } ?: "–"),
-                    "Updates in app" to if (interval > 0) "every ${"%.1f".format(interval / 1000.0)} s" else "–",
-                    "Viewers" to "${i.clients}",
-                    "Firmware" to "v${i.fw}",
+                    "Open dashboards" to "${i.clients}",
                 ))
-                Row(Modifier.fillMaxWidth()) {
-                    FilledTonalButton(onClick = {
-                        runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://${repo.prefs.value.host}/"))) }
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.AutoMirrored.Rounded.OpenInNew, null)
-                        Text("  Open web dashboard")
+                // the same three links as the web card; they open in the phone's browser
+                androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Classic dashboard" to "/classic", "Firmware update" to "/update", "Change Wi-Fi" to "/setup").forEach { (label, path) ->
+                        FilledTonalButton(onClick = { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://${repo.prefs.value.host}$path"))) } }) {
+                            Text(label); Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.padding(start = 6.dp).size(14.dp))
+                        }
                     }
                 }
             }
         }
+        full("bill") { BillSettingsSection(repo, toast) }
     }
 }

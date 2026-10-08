@@ -103,8 +103,9 @@ private fun SetRow(k: String, v: String, help: String? = null, onEdit: (() -> Un
     if (!first) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(k, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            Text(v, style = MaterialTheme.typography.bodyMedium.merge(NumberStyle), fontWeight = FontWeight.Medium, textAlign = TextAlign.End)
+            // label keeps at least 40 % of the row so a long value wraps instead of squeezing the label
+            Text(k, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.4f))
+            Text(v, style = MaterialTheme.typography.bodyMedium.merge(NumberStyle), fontWeight = FontWeight.Medium, textAlign = TextAlign.End, modifier = Modifier.weight(0.6f))
             if (onEdit != null) {
                 Spacer(Modifier.width(8.dp))
                 FilledTonalIconButton(onClick = onEdit, modifier = Modifier.size(34.dp)) { Icon(Icons.Rounded.Edit, "Change $k", Modifier.size(16.dp)) }
@@ -357,7 +358,7 @@ private fun VoltPicker(choices: List<Choice>, value: Double?, onChange: (Double)
                 FilledTonalIconButton(onClick = { onChange(volts[(i + 1).coerceAtMost(volts.size - 1)].value) }, enabled = i < volts.size - 1) { Icon(Icons.Rounded.Add, "Higher") }
             }
             if (volts.size > 1) Slider(i.toFloat(), { onChange(volts[it.toInt().coerceIn(0, volts.size - 1)].value) }, valueRange = 0f..(volts.size - 1).toFloat(),
-                steps = (volts.size - 2).coerceAtLeast(0))
+                steps = 0)   // continuous drag, snapped to the allowed steps by onChange
             Row {
                 Text(volts.first().label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                 Text("allowed range", Modifier.weight(1f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
