@@ -19,6 +19,7 @@ type Key = keyof typeof PATHS
 const COLORS: Record<Key, string> = { solar: 'var(--solar)', grid: 'var(--grid)', batt: 'var(--batt)', home: 'var(--load)' }
 const DEADBAND = 15 // W: smaller flows are shown as idle so lines don't flicker
 const MAX_DOTS = 7
+const MOON = '#8b9cf7' // soft moon blue, readable on light and dark
 const DIM = 0.35 // opacity of a part that is not available (night solar, grid off, no battery)
 
 interface Flow { w: number; reverse: boolean }
@@ -164,6 +165,15 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND, noBatt
         <g transform={`translate(${P.solar[0]} ${P.solar[1]})`}><SolarIcon intensity={ok ? solarFrac : 0} spinS={ok && flows.solar.w ? 26 - 22 * solarFrac : 0} /></g>
       </g>
 
+      {/* night: a moon badge on the solar circle's top-right corner (like an unread badge), not faded */}
+      {dim.solar && (
+        <g transform={`translate(${P.solar[0] + 23} ${P.solar[1] - 23})`} aria-hidden>
+          <circle r={11} fill="var(--surface-solid)" stroke="var(--border-strong)" strokeWidth={1.5} />
+          <circle r={6} fill={MOON} />
+          <circle cx={2.8} cy={-2.4} r={5} fill="var(--surface-solid)" />
+        </g>
+      )}
+
       <g opacity={dim.grid ? DIM : 1} style={{ transition: 'opacity .6s' }}>
         {node('grid', !!d?.gridOn, 'var(--grid)', 32)}
         <g transform={`translate(${P.grid[0]} ${P.grid[1]})`}>
@@ -182,7 +192,7 @@ export function FlowDiagram({ d, ratedW, still = false, idleW = DEADBAND, noBatt
 
       {d?.ever && (
         <g className="num" textAnchor="middle">
-          <NodeText x={72} y={80 - 50} big={fmtW(d.pvW)} small="Solar" smallBelow={80 + 50} />
+          <NodeText x={72} y={80 - 50} big={fmtW(d.pvW)} small={dim.solar ? 'Solar · night' : 'Solar'} smallBelow={80 + 50} />
           <NodeText x={328} y={80 - 50} big={d.gridOn ? (d.gridW > DEADBAND ? fmtW(d.gridW) : `${Math.round(d.gridV)} V`) : 'Off'} small={d.gridOn ? (d.gridW > DEADBAND ? 'Grid · in use' : 'Grid · standby') : 'Grid off'} smallBelow={80 + 50} />
           <NodeText x={72} y={230 + 58} big={noBatt ? '—' : `${d.battPct}%`} small={noBatt ? 'No battery' : bs === 'charging' ? `Charging ${fmtW(d.battW)}` : bs === 'discharging' ? `Discharging ${fmtW(-d.battW)}` : d.battPct >= 99 ? 'Full' : 'Idle'} smallBelow={230 - 46} />
           <NodeText x={328} y={230 + 58} big={fmtW(d.loadW)} small={`Home · ${d.loadPct}%`} smallBelow={230 - 46} />

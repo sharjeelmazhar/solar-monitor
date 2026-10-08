@@ -167,6 +167,15 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
                 translate(SOLAR.x, SOLAR.y) { sunIcon(e.solar, anim[0]) }
             }
 
+            // night: a moon badge on the solar circle's top-right corner (like an unread badge), not faded (same as the web)
+            if (dim[0]) {
+                val b = Offset(SOLAR.x + 23f, SOLAR.y - 23f)
+                drawCircle(cs.surfaceContainerLow, 11f, b)
+                drawCircle(cs.outlineVariant, 11f, b, style = Stroke(1.5f))
+                drawCircle(Color(0xFF8B9CF7), 6f, b)
+                drawCircle(cs.surfaceContainerLow, 5f, b + Offset(2.8f, -2.4f))
+            }
+
             val gridOn = x?.gridOn == true
             faded(dim[1], GRID, 32f) {
                 ring(GRID, 32f, e.grid, gridOn)
@@ -200,9 +209,10 @@ fun PowerFlow(d: Live?, ratedW: Int, modifier: Modifier = Modifier, still: Boole
             val r = tm.measure(text, style)
             drawText(r, topLeft = Offset(at.x * s - r.size.width / 2f, at.y * s - r.size.height / 2f))
         }
+        val night = dim[0]
         if (x != null && x.ever) {
             label(fmtW(x.pvW), Offset(SOLAR.x, SOLAR.y - 48), true)
-            label("Solar", Offset(SOLAR.x, SOLAR.y + 46), false)
+            label(if (night) "Solar · night" else "Solar", Offset(SOLAR.x, SOLAR.y + 46), false)
             label(if (x.gridOn) (if (x.gridW > 0) fmtW(x.gridW) else "${x.gridV.toInt()} V") else "Off", Offset(GRID.x, GRID.y - 48), true)
             label(if (x.gridOn) (if (x.gridW > 0) "Grid · in use" else "Grid · standby") else "Grid off", Offset(GRID.x, GRID.y + 46), false)
             label(if (noBatt) "—" else "${x.battPct}%", Offset(BATT.x, BATT.y + 50), true)
