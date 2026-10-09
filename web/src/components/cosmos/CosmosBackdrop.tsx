@@ -402,10 +402,10 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
 
       // moon: orbit by day, the big moonlit hero at night; never let the camera fly through it
       const ma = uTime.value * 0.12 + 2.2
-      tmp.set(EARTH.x + Math.cos(ma) * 2.7, EARTH.y + 0.35 + Math.sin(ma) * 0.7, EARTH.z + Math.sin(ma) * 2.7)
+      tmp.set(EARTH.x + Math.cos(ma) * 5.2, EARTH.y + 0.6 + Math.sin(ma) * 1.1, EARTH.z + Math.sin(ma) * 5.2)
       moon.position.copy(tmp).lerp(moonHero, n)
       moon.scale.setScalar(1 + 1.6 * n)
-      const clear = 0.26 * (1 + 1.6 * n) + 0.6
+      const clear = 0.26 * (1 + 1.6 * n) + 2.4 * (1 - n) + 0.6 * n
       const gap = camera.position.distanceTo(moon.position)
       if (gap < clear) moon.position.add(tmp.subVectors(moon.position, camera.position).setLength(clear - gap))
       moon.rotation.y += dt * 0.02

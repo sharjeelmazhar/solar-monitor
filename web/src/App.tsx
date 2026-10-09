@@ -5,13 +5,26 @@ import { IconButton, cn } from './components/ui/ui'
 import { hhmmss } from './lib/format'
 import { use3d, useClock, useTheme, type Theme } from './lib/prefs'
 import { useStale, useStore } from './lib/store'
-import EnergyPage from './pages/EnergyPage'
-import HistoryPage from './pages/HistoryPage'
-import OutagesPage from './pages/OutagesPage'
 import OverviewPage from './pages/OverviewPage'
-import SystemPage from './pages/SystemPage'
 
-const CosmosBackdrop = lazy(() => import('./components/cosmos/CosmosBackdrop').catch(() => ({ default: (_: { tab: number; light: boolean }) => <></> })))
+// Only the Live page is in the first download (the monitor serves large files slowly); the other tabs load
+// in the background a few seconds later, so switching to them is still instant.
+const loadHistory = () => import('./pages/HistoryPage')
+const loadEnergy = () => import('./pages/EnergyPage')
+const loadOutages = () => import('./pages/OutagesPage')
+const loadSystem = () => import('./pages/SystemPage')
+const HistoryPage = lazy(loadHistory)
+const EnergyPage = lazy(loadEnergy)
+const OutagesPage = lazy(loadOutages)
+const SystemPage = lazy(loadSystem)
+
+// The 3D chunk is big for the monitor's slow file serving: if the download fails, show the painted sky now and
+// try once more 20 s later; the other tabs are fetched only after it, so they don't compete for the link.
+const Empty3d = (_: { tab: number; light: boolean }) => <></>
+const load3d = () => import('./components/cosmos/CosmosBackdrop')
+const CosmosBackdrop = lazy(() => load3d()
+  .catch(() => new Promise<Awaited<ReturnType<typeof load3d>>>((ok, no) => { dispatchEvent(new CustomEvent('cosmos-fail')); setTimeout(() => load3d().then((m) => { dispatchEvent(new CustomEvent('cosmos-ok')); ok(m) }, no), 20000) }))
+  .catch(() => ({ default: Empty3d })))
 
 /** Renders nothing if the 3D background throws, so the app itself always stays up. */
 class Quiet extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -51,10 +64,15 @@ export default function App() {
   const ThemeIcon = theme === 'system' ? Monitor : theme === 'dark' ? Moon : Sun
   const [want3d, setFx] = use3d()
   const [failed3d, setFailed3d] = useState(false)
-  useEffect(() => { const on = () => setFailed3d(true); addEventListener('cosmos-fail', on); return () => removeEventListener('cosmos-fail', on) }, [])
+  useEffect(() => {
+    const off = () => setFailed3d(true), on = () => setFailed3d(false)
+    addEventListener('cosmos-fail', off); addEventListener('cosmos-ok', on)
+    return () => { removeEventListener('cosmos-fail', off); removeEventListener('cosmos-ok', on) }
+  }, [])
   const fx3d = want3d && !failed3d
   useEffect(() => { document.documentElement.classList.toggle('cosmos-3d', fx3d) }, [fx3d])
   useSpotlight()
+  useEffect(() => { let t = 0; const later = () => { t = window.setTimeout(() => { loadHistory(); loadEnergy(); loadOutages(); loadSystem() }, 1500) }; load3d().then(later, later); return () => clearTimeout(t) }, [])
   const [slowTip, setSlowTip] = useSlowTip()
 
   let page: ReactNode
@@ -96,7 +114,7 @@ export default function App() {
 
       {/* entry-only fade: an exit animation can stall in throttled/background tabs and block the new page */}
       <motion.main key={tab + (h12 ? 12 : 24)} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-        {page}
+        <Suspense fallback={<div className="grid min-h-[40vh] place-items-center text-sm text-text-3">Loading…</div>}>{page}</Suspense>
       </motion.main>
 
       {/* credit at the end of every page, same as the Android app */}

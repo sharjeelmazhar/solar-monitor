@@ -16,9 +16,31 @@
         document.documentElement.classList.toggle('dark', dark)
       } catch (e) {}
     </script>
+    <style>
+      #boot { position: fixed; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center;
+        font: 15px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #0b1020; background: #eef2fb; }
+      .dark #boot { color: #f3f5fb; background: radial-gradient(40rem 30rem at 80% 0%, rgba(255,150,40,.14), transparent 60%), radial-gradient(40rem 30rem at 0% 40%, rgba(110,60,200,.14), transparent 60%), #04060d; }
+      #boot svg { animation: bootspin 6s linear infinite; filter: drop-shadow(0 0 18px rgba(245,179,0,.5)); }
+      #boot .t { margin: 6px 0 0; font-weight: 600; letter-spacing: -.01em; }
+      #boot .s { margin: 0; max-width: 30ch; font-size: 13px; opacity: .6; }
+      #boot .bar { width: 160px; height: 3px; margin-top: 8px; border-radius: 3px; overflow: hidden; background: rgba(127,127,127,.25); }
+      #boot .bar span { display: block; width: 40%; height: 100%; border-radius: 3px; background: #f5b300; animation: bootbar 1.4s ease-in-out infinite; }
+      @keyframes bootspin { to { transform: rotate(360deg); } }
+      @keyframes bootbar { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+      @media (prefers-reduced-motion: reduce) { #boot svg, #boot .bar span { animation: none; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- shown instantly while the app downloads from the monitor (the small board serves big files slowly);
+           React replaces it on first render -->
+      <div id="boot">
+        <svg viewBox="0 0 32 32" width="56" height="56" aria-hidden="true"><circle cx="16" cy="16" r="6.5" fill="#f5b300"/><g stroke="#f5b300" stroke-width="2.6" stroke-linecap="round"><path d="M16 2.5v3.5M16 26v3.5M2.5 16H6M26 16h3.5M6.5 6.5l2.4 2.4M23.1 23.1l2.4 2.4M6.5 25.5l2.4-2.4M23.1 8.9l2.4-2.4"/></g></svg>
+        <p class="t">Loading from your monitor…</p>
+        <p class="s">The first visit after an update can take up to a minute. After that it opens instantly.</p>
+        <div class="bar"><span></span></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
