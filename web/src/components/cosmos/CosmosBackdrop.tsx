@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { parseRated } from '../../lib/decode'
 import { getState } from '../../lib/store'
-import { HOME, sunPhase, sunTimes } from '../../lib/sun'
+import { HOME, sunPhase } from '../../lib/sun'
 import EARTH_DAY from '../../assets/earth/day.webp'
 import EARTH_NIGHT from '../../assets/earth/night.webp'
-import { forceNight } from './night'
+import { nightness } from './night'
 import {
   ATMO_FRAG, CORONA_FRAG, EARTH_FRAG, MOON_FRAG, GALAXY_VERT, POINT_FRAG, SKY_FRAG, SKY_VERT, SPHERE_VERT, STAR_VERT, STREAM_VERT, SUN_FRAG,
 } from './shaders'
@@ -19,6 +19,7 @@ import {
 const SUN = new THREE.Vector3(0, 0, 0)
 const EARTH = new THREE.Vector3(7.2, 0.5, -3.2)
 const GALAXY = new THREE.Vector3(-34, 16, -95)
+const DEBUG = typeof location !== 'undefined' && /[?&]debug=1/.test(location.search)
 
 function smooth(cur: number, target: number, dt: number, rate: number) {
   return cur + (target - cur) * (1 - Math.exp(-dt * rate))
@@ -82,6 +83,7 @@ function galaxy(n: number) {
   g.setAttribute('aR', new THREE.BufferAttribute(r, 1))
   g.setAttribute('aAng', new THREE.BufferAttribute(ang, 1))
   g.setAttribute('aSize', new THREE.BufferAttribute(size, 1))
+  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 32)
   return g
 }
 
@@ -148,18 +150,6 @@ function moonGlowTexture() {
   return new THREE.CanvasTexture(c)
 }
 
-/** 0 by day, 1 at night, in between during the 90 minutes around sunrise and sunset. */
-function nightness(now = new Date()) {
-  if (forceNight()) return 1
-  const { rise, set } = sunTimes(now)
-  const t = now.getTime()
-  const ramp = 45 * 60000
-  if (t < rise - ramp || t > set + ramp) return 1
-  if (t > rise + ramp && t < set - ramp) return 0
-  const edge = t < (rise + set) / 2 ? (rise + ramp - t) / (2 * ramp) : (t - (set - ramp)) / (2 * ramp)
-  return Math.max(0, Math.min(1, edge))
-}
-
 export default function CosmosBackdrop({ tab, light }: { tab: number; light: boolean }) {
   const host = useRef<HTMLDivElement>(null)
   const props = useRef({ tab, light })
@@ -169,9 +159,16 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
     const el = host.current!
     const mobile = matchMedia('(max-width: 768px)').matches
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
-    let dpr = Math.min(devicePixelRatio || 1, mobile ? 1.25 : 1.5)
+    let dprMax = Math.min(devicePixelRatio || 1, mobile ? 1.25 : 1.5)
+    let dpr = dprMax
 
-    const renderer = new THREE.WebGLRenderer({ antialias: !mobile, alpha: false, powerPreference: 'high-performance' })
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: !mobile, alpha: false, powerPreference: 'high-performance' })
+    } catch {
+      dispatchEvent(new CustomEvent('cosmos-fail'))
+      return
+    }
     renderer.setPixelRatio(dpr)
     renderer.setSize(innerWidth, innerHeight, false)
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -186,13 +183,14 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
     const uPix = { value: dpr }
     const uAct = { value: 0.5 }
     const uFlow = { value: 0.2 }
+    const uSunDir = { value: new THREE.Vector3(0, 0, -1) }
     const toSun = new THREE.Vector3().subVectors(SUN, EARTH).normalize()
     const up = new THREE.Vector3(0, 1, 0)
     const add = THREE.AdditiveBlending
     const disposables: { dispose(): void }[] = []
 
     const sky = new THREE.Mesh(new THREE.SphereGeometry(500, 48, 24),
-      new THREE.ShaderMaterial({ vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, uniforms: { uTime, uLight, uNight }, side: THREE.BackSide, depthWrite: false }))
+      new THREE.ShaderMaterial({ vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, uniforms: { uTime, uLight, uNight, uSunDir }, side: THREE.BackSide, depthWrite: false }))
     sky.renderOrder = -10
     scene.add(sky)
 
@@ -207,7 +205,7 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
 
     // the sun: surface, corona shell and a soft glow sprite (all dim at night)
     scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.6, 64, 48),
-      new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: SUN_FRAG, uniforms: { uTime, uAct, uNight } })))
+      new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: SUN_FRAG, uniforms: { uTime, uAct, uNight, uLight } })))
     scene.add(new THREE.Mesh(new THREE.SphereGeometry(2.6, 48, 32),
       new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: CORONA_FRAG, uniforms: { uTime, uAct, uLight }, blending: add, side: THREE.BackSide, depthWrite: false, transparent: true })))
     const glowTex = glowTexture()
@@ -288,64 +286,101 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
       nightLook.points[0].copy(moonHero).addScaledVector(side, -2.0).addScaledVector(up, -1.0)
       nightCam.points[1].copy(nightCam.points[0]).lerp(nightCam.points[2], 0.5).addScaledVector(up, 0.8)
       nightLook.points[1].copy(moonHero).lerp(EARTH, 0.7)
-      for (const c of [dayCam, nightCam, dayLook, nightLook]) c.updateArcLengths()
     }
     placePaths()
 
-    const view = { p: 0, tab: props.current.tab * 0.55, mx: 0, my: 0, tmx: 0, tmy: 0 }
+    const view = { v: 0, p: 0, tab: props.current.tab * 0.32, mx: 0, my: 0, tmx: 0, tmy: 0 }
     const pos = new THREE.Vector3(), look = new THREE.Vector3(), tmp = new THREE.Vector3(), rot = new THREE.Matrix4()
 
-    const progress = () => {
-      const max = document.documentElement.scrollHeight - innerHeight
-      return max > 40 ? Math.min(1, Math.max(0, scrollY / max)) : 0
-    }
+    // page height is cached (reading scrollHeight every frame forces a layout)
+    let scrollMax = 0
+    const measure = () => { scrollMax = document.documentElement.scrollHeight - innerHeight }
+    const ro = new ResizeObserver(measure)
+    ro.observe(document.body)
+    measure()
+    const progress = () => (scrollMax > 40 ? Math.min(1, Math.max(0, scrollY / scrollMax)) : 0)
     const onMove = (e: PointerEvent) => { view.tmx = (e.clientX / innerWidth) * 2 - 1; view.tmy = (e.clientY / innerHeight) * 2 - 1 }
+    let lastW = 0, lastH = 0
     const onResize = () => {
+      // phones show/hide the address bar while scrolling: ignore small height-only changes (no buffer reallocation mid-scroll)
+      if (innerWidth === lastW && Math.abs(innerHeight - lastH) < 160 && lastH) { measure(); return }
+      lastW = innerWidth
+      lastH = innerHeight
+      dprMax = Math.min(devicePixelRatio || 1, mobile ? 1.25 : 1.5)
+      dpr = Math.min(dpr, dprMax)
+      renderer.setPixelRatio(dpr)
+      uPix.value = dpr
       camera.aspect = innerWidth / innerHeight
       camera.fov = camera.aspect < 0.8 ? 62 : 50 // portrait phones see a wider slice
       camera.updateProjectionMatrix()
       renderer.setSize(innerWidth, innerHeight, false)
+      measure()
     }
     onResize()
     addEventListener('pointermove', onMove, { passive: true })
     addEventListener('resize', onResize)
 
-    let raf = 0, last = performance.now(), slow = 0, frames = 0, skip = false, odd = false, warned = false
+    // quality governor: judged against this device's own best frame time, so 30 fps-capped phones (battery saver)
+    // don't count as slow; steps resolution down, then renders every other frame, then suggests turning 3D off;
+    // steps back up after clean stretches.
+    let raf = 0, last = performance.now(), acc = 0, slowN = 0, frames = 0, clean = 0, skip = false, odd = false, warned = false, base = 1
     const level = { act: 0.5, flow: 0.2, night: uNight.value, at: 0 }
+    const q = new THREE.Quaternion(), m4 = new THREE.Matrix4(), upAlt = new THREE.Vector3(0, 0, -1)
+    let aimed = false
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame)
-      const dt = Math.min(0.1, (now - last) / 1000)
+      const raw = Math.min(0.1, (now - last) / 1000)
       last = now
-      // quality governor: lower resolution, then halve the frame rate; finally suggest turning 3D off
       frames++
-      if (dt > 0.026) slow++
-      if (frames === 90) {
-        if (slow > 45 && dpr > 0.75) { dpr = Math.max(0.75, dpr - 0.25); renderer.setPixelRatio(dpr); uPix.value = dpr; renderer.setSize(innerWidth, innerHeight, false) }
-        else if (slow > 45 && !skip) skip = true
-        else if (slow > 60 && skip && !warned) { warned = true; dispatchEvent(new CustomEvent('cosmos-slow')) }
-        frames = slow = 0
+      if (frames > 60) {
+        base = Math.min(base, Math.max(raw, 0.004))
+        if (raw > Math.max(0.026, base * 1.6)) slowN++
+        if (frames % 90 === 0) {
+          if (slowN > 45) {
+            clean = 0
+            if (dpr > 0.75) { dpr = Math.max(0.75, dpr - 0.25); renderer.setPixelRatio(dpr); uPix.value = dpr; renderer.setSize(innerWidth, innerHeight, false) }
+            else if (!skip) skip = true
+            else if (!warned) { warned = true; dispatchEvent(new CustomEvent('cosmos-slow')) }
+          } else if (slowN < 10 && ++clean >= 3) {
+            clean = 0
+            if (skip) skip = false
+            else if (dpr < dprMax) { dpr = Math.min(dprMax, dpr + 0.25); renderer.setPixelRatio(dpr); uPix.value = dpr; renderer.setSize(innerWidth, innerHeight, false) }
+          }
+          slowN = 0
+        }
       }
-      if (skip && (odd = !odd)) return
+      acc += raw
+      // when the camera is at rest the scene changes slowly: render at half rate to spare the battery and the glass blur
+      const target = progress()
+      const settled = Math.abs(target - view.p) < 1e-4 && Math.abs(view.v) < 1e-3 && Math.abs(view.tab - props.current.tab * 0.32) < 1e-3
+        && Math.abs(view.mx - view.tmx) < 1e-3 && Math.abs(view.my - view.tmy) < 1e-3
+      if ((skip || settled) && (odd = !odd)) return
+      const dt = Math.min(0.1, acc)
+      acc = 0
 
       if (now - level.at > 1000) {
         Object.assign(level, solarLevel(), { night: nightness(), at: now })
         turnEarth()
         placePaths()
       }
-      if (!reduce) uTime.value += dt
+      if (!reduce) uTime.value = (uTime.value + dt) % 3600 // bounded so shader maths keeps its precision
       uAct.value = smooth(uAct.value, level.act, dt, 1.2)
       uFlow.value = smooth(uFlow.value, level.flow, dt, 1.2)
       uNight.value = smooth(uNight.value, level.night, dt, 0.8)
       uLight.value = smooth(uLight.value, props.current.light ? 1 : 0, dt, 2.5)
       const n = uNight.value
-      glow.scale.setScalar((10 + 12 * uAct.value) * (1 - 0.45 * n))
-      ;(glow.material as THREE.SpriteMaterial).opacity = (0.55 + 0.45 * uAct.value) * (1 - 0.6 * uLight.value) * (1 - 0.55 * n)
+      const L = uLight.value
+      glow.scale.setScalar((10 + 12 * uAct.value) * (1 - 0.45 * n) * (1 + 0.5 * L))
+      ;(glow.material as THREE.SpriteMaterial).opacity = Math.min(1, (0.55 + 0.45 * uAct.value) * (1 + 0.25 * L)) * (1 - 0.55 * n)
 
-      // moon: orbit by day, the big moonlit hero at night
+      // moon: orbit by day, the big moonlit hero at night; never let the camera fly through it
       const ma = uTime.value * 0.12 + 2.2
-      tmp.set(EARTH.x + Math.cos(ma) * 2.1, EARTH.y + Math.sin(ma) * 0.45, EARTH.z + Math.sin(ma) * 2.1)
+      tmp.set(EARTH.x + Math.cos(ma) * 2.7, EARTH.y + 0.35 + Math.sin(ma) * 0.7, EARTH.z + Math.sin(ma) * 2.7)
       moon.position.copy(tmp).lerp(moonHero, n)
       moon.scale.setScalar(1 + 1.6 * n)
+      const clear = 0.26 * (1 + 1.6 * n) + 0.6
+      const gap = camera.position.distanceTo(moon.position)
+      if (gap < clear) moon.position.add(tmp.subVectors(moon.position, camera.position).setLength(clear - gap))
       moon.rotation.y += dt * 0.02
       tmp.subVectors(SUN, moon.position).normalize()
       moonLight.value.copy(tmp).lerp(tmp.subVectors(camera.position, moon.position).normalize().addScaledVector(side, -0.5), 0.8 * n).normalize()
@@ -358,38 +393,55 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
       marker.scale.setScalar(0.1 + 0.05 * beat)
       ;(marker.material as THREE.SpriteMaterial).opacity = 0.75 + 0.25 * beat
 
-      // camera: gentle springs on scroll, tab swing and pointer so every move eases in and out
-      view.p = smooth(view.p, progress(), dt, 2.6)
-      view.tab = smooth(view.tab, props.current.tab * 0.55, dt, 1.4)
+      // camera: a critically damped spring follows the scroll, tab swing and pointer ease in and out
+      view.v += ((target - view.p) * 26 - view.v * 10.2) * dt
+      view.p = Math.min(1, Math.max(0, view.p + view.v * dt))
+      view.tab = smooth(view.tab, props.current.tab * 0.32, dt, 1.6)
       view.mx = smooth(view.mx, view.tmx, dt, 1.8)
       view.my = smooth(view.my, view.tmy, dt, 1.8)
       const p = view.p * view.p * (3 - 2 * view.p) // ease in-out along the flight
       const wobble = reduce ? 0 : Math.sin(uTime.value * 0.07) * 0.06
-      rot.makeRotationY(view.tab * (1 - p * 0.5) + wobble)
-      dayCam.getPointAt(p, pos)
-      pos.lerp(nightCam.getPointAt(p, tmp), n)
-      dayLook.getPointAt(p, look)
-      look.lerp(nightLook.getPointAt(p, tmp), n)
-      // tabs swing the view around the earth/sun midpoint
-      pos.sub(EARTH).applyMatrix4(rot).add(EARTH)
+      dayCam.getPoint(p, pos)
+      pos.lerp(nightCam.getPoint(p, tmp), n)
+      dayLook.getPoint(p, look)
+      look.lerp(nightLook.getPoint(p, tmp), n)
       if (camera.aspect < 0.8) { const k = 1 - Math.min(1, view.p * 4); look.x += 2.6 * k * (1 - n); look.y -= 4.6 * k * (1 - n) + 0.5 * k * n; look.addScaledVector(side, 1.5 * k * n) }
+      // tabs orbit the camera around what it looks at, so the subject stays in frame
+      rot.makeRotationY(view.tab + wobble)
+      pos.sub(look).applyMatrix4(rot).add(look)
       pos.x += view.mx * 0.6
       pos.y -= view.my * 0.4
       camera.position.copy(pos)
-      camera.lookAt(look)
+      // aim with a quaternion slerp: no sudden flips when the target swings round, no spin when looking straight down
+      tmp.subVectors(look, pos).normalize()
+      m4.lookAt(pos, look, Math.abs(tmp.y) > 0.98 ? upAlt : up)
+      q.setFromRotationMatrix(m4)
+      if (!aimed) { camera.quaternion.copy(q); aimed = true } else camera.quaternion.slerp(q, 1 - Math.exp(-dt * 7))
+      uSunDir.value.subVectors(SUN, camera.position).normalize()
+      if (DEBUG) (window as unknown as { __cosmos: unknown }).__cosmos = { t: now, p: view.p, scroll: progress(), cam: camera.position.toArray(), look: look.toArray(), dpr, skip, night: n }
       renderer.render(scene, camera)
     }
-    const start = () => { if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame) } }
+    const start = () => { if (!raf) { last = performance.now(); acc = 0; raf = requestAnimationFrame(frame) } }
     const stop = () => { cancelAnimationFrame(raf); raf = 0 }
     const onVis = () => (document.hidden ? stop() : start())
     document.addEventListener('visibilitychange', onVis)
+    // GPU reset / lost context: show the painted sky instead unless the context comes back quickly
+    let lostTimer = 0
+    const onLost = (e: Event) => { e.preventDefault(); stop(); lostTimer = window.setTimeout(() => dispatchEvent(new CustomEvent('cosmos-fail')), 3000) }
+    const onRestored = () => { clearTimeout(lostTimer); start() }
+    renderer.domElement.addEventListener('webglcontextlost', onLost)
+    renderer.domElement.addEventListener('webglcontextrestored', onRestored)
     start()
 
     return () => {
       stop()
+      clearTimeout(lostTimer)
+      ro.disconnect()
       document.removeEventListener('visibilitychange', onVis)
       removeEventListener('pointermove', onMove)
       removeEventListener('resize', onResize)
+      renderer.domElement.removeEventListener('webglcontextlost', onLost)
+      renderer.domElement.removeEventListener('webglcontextrestored', onRestored)
       scene.traverse((o) => {
         const m = o as THREE.Mesh
         m.geometry?.dispose()
@@ -397,6 +449,7 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
       })
       disposables.forEach((d) => d.dispose())
       renderer.dispose()
+      renderer.forceContextLoss()
       renderer.domElement.remove()
     }
   }, [])

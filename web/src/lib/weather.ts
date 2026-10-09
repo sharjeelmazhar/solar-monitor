@@ -3,7 +3,7 @@
 // Same logic as android data/Weather.kt.
 import { useEffect, useState } from 'react'
 import type { Live } from './types'
-import { sunPhase } from './sun'
+import { sunPhase, sunTimes } from './sun'
 
 export const WEATHER_AT = { name: 'Gujar Khan', lat: 33.253, lon: 73.304 }
 const EVERY_MS = 15 * 60_000
@@ -60,12 +60,30 @@ export function useWeather(): Weather | null {
 
 export type SolarBadge = 'night' | 'cloudy' | 'rain' | 'cloudy?' | null
 
-/** What to show on the solar circle: moon at night; cloud when the sky is cloudy (or, with no weather,
- *  when solar is far below today's peak in the middle of the day). */
+// Last minute of solar readings, so one dip (a bird, a passing cloud edge) doesn't flip the badge.
+const pvLog: { t: number; w: number }[] = []
+/** Average solar watts over the last 60 s of readings (the current reading alone until there are more). */
+export function pvMinuteAvg(d: Live): number {
+  const t = d.t || Date.now()
+  if (!pvLog.length || pvLog[pvLog.length - 1].t !== t) pvLog.push({ t, w: d.pvW })
+  while (pvLog.length && t - pvLog[0].t > 60_000) pvLog.shift()
+  if (pvLog.length > 200) pvLog.splice(0, pvLog.length - 200)
+  return pvLog.reduce((s, x) => s + x.w, 0) / pvLog.length
+}
+export const _resetPvLog = () => { pvLog.length = 0 }
+
+/** What to show on the solar circle: moon at night; rain / cloud from the weather; and a cloud from the panels
+ *  themselves when the sun is up (more than 40 min from sunrise/sunset) but solar has stayed under 50 W for a
+ *  minute on a system that can make 300 W+. The panels are the ground truth: the weather model can say "clear"
+ *  for a town while a cloud sits over the house. */
 export function solarBadge(d: Live, w: Weather | null, now = d.t ? new Date(d.t) : new Date()): SolarBadge {
   const phase = sunPhase(now)
   if (phase === 'night') return d.pvW < 15 ? 'night' : null
   if (w && (w.sky === 'rain' || w.sky === 'cloudy')) return w.sky
+  const { rise, set } = sunTimes(now)
+  const t = now.getTime()
+  const sunUp = t > rise + 40 * 60000 && t < set - 40 * 60000
+  if (sunUp && d.today.pvPeak >= 300 && pvMinuteAvg(d) < 50) return 'cloudy'
   if (!w && phase === 'day' && d.today.pvPeak >= 300 && d.pvW < Math.max(80, 0.25 * d.today.pvPeak)) return 'cloudy?'
   return null
 }

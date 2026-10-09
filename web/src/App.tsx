@@ -1,6 +1,6 @@
 import { BarChart3, CalendarClock, Cpu, Gauge, Monitor, Moon, PlugZap, Sun } from 'lucide-react'
 import { MotionConfig, motion } from 'motion/react'
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { IconButton, cn } from './components/ui/ui'
 import { hhmmss } from './lib/format'
 import { use3d, useClock, useTheme, type Theme } from './lib/prefs'
@@ -11,7 +11,14 @@ import OutagesPage from './pages/OutagesPage'
 import OverviewPage from './pages/OverviewPage'
 import SystemPage from './pages/SystemPage'
 
-const CosmosBackdrop = lazy(() => import('./components/cosmos/CosmosBackdrop'))
+const CosmosBackdrop = lazy(() => import('./components/cosmos/CosmosBackdrop').catch(() => ({ default: (_: { tab: number; light: boolean }) => <></> })))
+
+/** Renders nothing if the 3D background throws, so the app itself always stays up. */
+class Quiet extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  render() { return this.state.failed ? null : this.props.children }
+}
 
 const TABS = [
   { id: 'overview', label: 'Live', icon: Gauge },
@@ -42,7 +49,10 @@ export default function App() {
   useEffect(() => { document.title = title }, [title])
   const nextTheme: Record<Theme, Theme> = { system: dark ? 'light' : 'dark', light: 'dark', dark: 'system' }
   const ThemeIcon = theme === 'system' ? Monitor : theme === 'dark' ? Moon : Sun
-  const [fx3d, setFx] = use3d()
+  const [want3d, setFx] = use3d()
+  const [failed3d, setFailed3d] = useState(false)
+  useEffect(() => { const on = () => setFailed3d(true); addEventListener('cosmos-fail', on); return () => removeEventListener('cosmos-fail', on) }, [])
+  const fx3d = want3d && !failed3d
   useEffect(() => { document.documentElement.classList.toggle('cosmos-3d', fx3d) }, [fx3d])
   useSpotlight()
   const [slowTip, setSlowTip] = useSlowTip()
@@ -57,7 +67,7 @@ export default function App() {
   return (
     <MotionConfig reducedMotion="user">
     {/* the universe behind every page (WebGL); without 3D a painted starfield in CSS takes its place */}
-    {fx3d && <Suspense fallback={null}><CosmosBackdrop tab={TABS.findIndex((t) => t.id === tab)} light={!dark} /></Suspense>}
+    {fx3d && <Quiet><Suspense fallback={null}><CosmosBackdrop tab={TABS.findIndex((t) => t.id === tab)} light={!dark} /></Suspense></Quiet>}
     <div className="relative z-[1] mx-auto min-h-dvh max-w-[1400px] px-4 pb-[calc(88px+env(safe-area-inset-bottom))] sm:px-6 md:pb-10">
       <header className="sticky top-0 z-30 mb-4 pt-[env(safe-area-inset-top)]">
         {/* edge-to-edge frosted backdrop that fades out at the bottom: no box, no border */}

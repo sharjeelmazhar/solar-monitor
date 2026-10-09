@@ -3,8 +3,8 @@ import { fmtW } from '../../lib/format'
 import { useBattIdle } from '../../lib/prefs'
 import { battState, sourcesSentence } from '../../lib/power'
 import { hhmm } from '../../lib/format'
-import { sunPhase, sunTimes } from '../../lib/sun'
-import { forceNight } from './night'
+import { sunTimes } from '../../lib/sun'
+import { isNight } from './night'
 import type { Live } from '../../lib/types'
 import { Value, cn } from '../ui/ui'
 
@@ -19,7 +19,7 @@ export function Hero({ d, offline, noBatt }: { d: Live | null; offline: boolean;
   const rotateX = useTransform(scrollY, [0, 320], [0, 18])
   const scale = useTransform(scrollY, [0, 320], [1, 0.94])
   const [, , idleW] = useBattIdle()
-  const night = forceNight() || sunPhase() === 'night'
+  const night = isNight()
   const live = !!d?.ever && !offline
 
   const kicker = !d ? 'Connecting to your monitor' : !d.ever ? 'Waiting for the inverter' : offline ? 'Last reading' : night ? 'Night · solar is resting' : 'Solar right now'

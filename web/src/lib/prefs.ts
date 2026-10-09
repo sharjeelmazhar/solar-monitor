@@ -41,13 +41,17 @@ export function useTheme() {
   return { theme, setTheme, dark }
 }
 
+let glOk: boolean | null = null
 export function webglAvailable() {
+  if (glOk != null) return glOk
   try {
-    const c = document.createElement('canvas')
-    return !!(c.getContext('webgl2') || c.getContext('webgl'))
+    const gl = document.createElement('canvas').getContext('webgl2')
+    glOk = !!gl
+    gl?.getExtension('WEBGL_lose_context')?.loseContext()
   } catch {
-    return false
+    glOk = false
   }
+  return glOk
 }
 
 function default3d() {

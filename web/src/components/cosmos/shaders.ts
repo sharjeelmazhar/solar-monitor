@@ -41,7 +41,7 @@ void main(){
 
 // The sun: boiling granulation, limb darkening; brightness and colour follow solar output (uAct 0..1).
 export const SUN_FRAG = /* glsl */ `
-uniform float uTime; uniform float uAct; uniform float uNight;
+uniform float uTime; uniform float uAct; uniform float uNight; uniform float uLight;
 varying vec3 vN; varying vec3 vObj; varying vec3 vView;
 ${NOISE}
 void main(){
@@ -57,6 +57,7 @@ void main(){
   c*=.5+.7*pow(mu,.55);
   c=mix(c,vec3(1.,.6,.2),pow(1.-mu,3.)*.5);
   c*=mix(.55,1.35,uAct)*(1.-.5*uNight);
+  c=mix(c,vec3(1.,.93,.74)*1.15,.38*uLight*(1.-uNight));
   gl_FragColor=vec4(c,1.);
 }`
 
@@ -129,11 +130,18 @@ export const SKY_VERT = /* glsl */ `
 varying vec3 vDir;
 void main(){ vDir=normalize(position); vec4 p=projectionMatrix*modelViewMatrix*vec4(position,1.); gl_Position=p.xyww; }`
 export const SKY_FRAG = /* glsl */ `
-uniform float uTime; uniform float uLight; uniform float uNight;
+uniform float uTime; uniform float uLight; uniform float uNight; uniform vec3 uSunDir;
 varying vec3 vDir;
 ${NOISE}
 void main(){
   vec3 d=normalize(vDir);
+  if(uLight>.995){
+    vec3 s=mix(vec3(.93,.95,.98),vec3(.55,.74,.98),smoothstep(-.15,.75,d.y));
+    s=mix(s,vec3(.99,.96,.9),smoothstep(.1,-.5,d.y)*.7);
+    float q=max(dot(d,uSunDir),0.);
+    gl_FragColor=vec4(s+vec3(1.,.82,.55)*(pow(q,6.)*.28+pow(q,40.)*.35),1.);
+    return;
+  }
   float n=fbm3(d*2.2+vec3(uTime*.004,0.,0.));
   float n2=.5*snoise(d*5.+vec3(0.,uTime*.006,0.))+.25*snoise(d*10.3);
   float band=exp(-pow(dot(d,normalize(vec3(.35,1.,.18))),2.)*9.);
@@ -141,8 +149,11 @@ void main(){
   vec3 neb=vec3(.32,.12,.55)*smoothstep(.0,.7,n)*.42+vec3(.05,.3,.5)*smoothstep(.15,.8,n2)*.3;
   vec3 dark=base+neb*(.35+.65*band)+vec3(.1,.11,.2)*band*smoothstep(-.2,.6,n2)*.5;
   dark=mix(dark,dark*vec3(.8,.95,1.4)+vec3(.004,.008,.03),uNight);
-  vec3 sky=mix(vec3(.98,.95,.93),vec3(.78,.86,1.),smoothstep(-.3,.8,d.y));
-  sky+=vec3(.45,.3,.6)*smoothstep(.2,.9,n)*.08+vec3(.2,.4,.6)*smoothstep(.3,.9,n2)*.06;
+  vec3 sky=mix(vec3(.93,.95,.98),vec3(.55,.74,.98),smoothstep(-.15,.75,d.y));
+  sky=mix(sky,vec3(.99,.96,.9),smoothstep(.1,-.5,d.y)*.7);
+  float sd=max(dot(d,uSunDir),0.);
+  sky+=vec3(1.,.82,.55)*(pow(sd,6.)*.28+pow(sd,40.)*.35);
+  sky+=vec3(1.)*smoothstep(.35,.95,n)*.05*(.5+.5*d.y);
   gl_FragColor=vec4(mix(dark,sky,uLight),1.);
 }`
 
@@ -163,7 +174,7 @@ void main(){
   vec4 mv=modelViewMatrix*vec4(position,1.);
   gl_Position=projectionMatrix*mv;
   gl_PointSize=aSize*uPix;
-  vCol=color; vA=(.55+.45*sin(uTime*(.6+aPhase)+aPhase*20.))*(1.-.92*uLight)*(1.+.5*uNight);
+  vCol=color; vA=(.55+.45*sin(uTime*(.6+aPhase)+aPhase*20.))*(1.-uLight)*(1.+.5*uNight);
 }`
 
 // Spiral galaxy: each star orbits faster near the core (differential rotation).
@@ -177,7 +188,7 @@ void main(){
   vec4 mv=modelViewMatrix*vec4(p,1.);
   gl_Position=projectionMatrix*mv;
   gl_PointSize=clamp(aSize*uPix*(220./-mv.z),1.,8.*uPix);
-  vCol=color; vA=1.-.75*uLight;
+  vCol=color; vA=1.-uLight;
 }`
 
 // Energy flowing from the sun to the earth; uFlow (0..1) decides how many particles travel.
