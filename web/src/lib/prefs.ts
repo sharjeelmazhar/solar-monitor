@@ -97,14 +97,15 @@ let fx3d: boolean | null = null
 const fxListeners = new Set<() => void>()
 const getFx = () => {
   if (fx3d == null) {
-    const v = read('fx3d')
+    // new key for the cosmos background: the old 'fx3d' (3D core) choice must not hide the new universe
+    const v = read('cosmos3d')
     fx3d = v == null ? default3d() : v === '1'
   }
   return fx3d
 }
 const setFx = (on: boolean) => {
   fx3d = on
-  write('fx3d', on ? '1' : '0')
+  write('cosmos3d', on ? '1' : '0')
   fxListeners.forEach((l) => l())
 }
 

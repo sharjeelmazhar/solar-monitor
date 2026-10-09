@@ -212,7 +212,8 @@ html.cosmos-3d.dark {
 }
 html.cosmos-3d body { background: #04060d; }
 html.cosmos-3d:not(.dark) body { background: #eef2fb; }
-html.cosmos-3d body::before { display: none; }
+html.cosmos-3d body::before,
+html.dark body::before { display: none; }
 /* no WebGL / 3D switched off: a painted night sky instead of the grid */
 html.dark:not(.cosmos-3d) body {
   background:

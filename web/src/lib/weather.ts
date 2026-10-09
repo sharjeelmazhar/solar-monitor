@@ -11,9 +11,13 @@ const EVERY_MS = 15 * 60_000
 export type Sky = 'clear' | 'partly' | 'cloudy' | 'rain'
 export interface Weather { sky: Sky; cloud: number; at: number }
 
-/** WMO weather code + cloud cover (%) to a simple sky. */
-export function skyOf(code: number, cloud: number): Sky {
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95) return 'rain'
+/** WMO weather code + cloud cover (%) to a simple sky. With `mm` (rain measured right now) a rain code only
+ *  counts when rain is actually falling under a heavy sky: the model often flags drizzle or a thunderstorm
+ *  for a 15-minute slot while the sun is out. */
+export function skyOf(code: number, cloud: number, mm?: number): Sky {
+  const rainCode = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) || code >= 95
+  if (rainCode && (mm == null || (mm > 0 && cloud >= 50))) return 'rain'
+  if (rainCode) return cloud >= 70 ? 'cloudy' : cloud >= 30 ? 'partly' : 'clear'
   if (code === 3 || code === 45 || code === 48 || cloud >= 70) return 'cloudy'
   if (code === 2 || cloud >= 30) return 'partly'
   return 'clear'
@@ -27,11 +31,12 @@ async function refresh() {
   if (inFlight || (cache && Date.now() - cache.at < EVERY_MS)) return
   inFlight = (async () => {
     try {
-      const u = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_AT.lat}&longitude=${WEATHER_AT.lon}&current=cloud_cover,weather_code`
+      const u = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_AT.lat}&longitude=${WEATHER_AT.lon}&current=cloud_cover,weather_code,rain,showers`
       const r = await fetch(u, { signal: AbortSignal.timeout(8000) })
       const j = await r.json()
       const cloud = Number(j?.current?.cloud_cover), code = Number(j?.current?.weather_code)
-      if (Number.isFinite(cloud) && Number.isFinite(code)) cache = { sky: skyOf(code, cloud), cloud, at: Date.now() }
+      const mm = (Number(j?.current?.rain) || 0) + (Number(j?.current?.showers) || 0)
+      if (Number.isFinite(cloud) && Number.isFinite(code)) cache = { sky: skyOf(code, cloud, mm), cloud, at: Date.now() }
     } catch {
       // no internet on this network: the watts-only guess below still works
     } finally {

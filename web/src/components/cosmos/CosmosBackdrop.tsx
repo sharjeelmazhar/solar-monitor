@@ -4,7 +4,7 @@ import { parseRated } from '../../lib/decode'
 import { getState } from '../../lib/store'
 import { sunPhase } from '../../lib/sun'
 import {
-  ATMO_FRAG, CORONA_FRAG, EARTH_FRAG, GALAXY_VERT, POINT_FRAG, SKY_FRAG, SKY_VERT, SPHERE_VERT, STAR_VERT, STREAM_VERT, SUN_FRAG,
+  ATMO_FRAG, CORONA_FRAG, EARTH_FRAG, MOON_FRAG, GALAXY_VERT, POINT_FRAG, SKY_FRAG, SKY_VERT, SPHERE_VERT, STAR_VERT, STREAM_VERT, SUN_FRAG,
 } from './shaders'
 
 // Full-screen 3D universe behind the whole web app: a live sun (its glow follows solar output), the earth
@@ -178,6 +178,11 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
     atmo.position.copy(EARTH)
     scene.add(atmo)
 
+    // the moon, orbiting the earth
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(0.24, 40, 28),
+      new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: MOON_FRAG, uniforms: { uSun: earthU.uSun } }))
+    scene.add(moon)
+
     // energy stream sun -> earth (quadratic curve that bows upwards)
     const ctrl = new THREE.Vector3().addVectors(SUN, EARTH).multiplyScalar(0.5).add(new THREE.Vector3(0, 1.6, 0.8))
     const from = new THREE.Vector3().subVectors(EARTH, SUN).normalize().multiplyScalar(1.7)
@@ -240,6 +245,8 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
       glow.scale.setScalar(10 + 12 * uAct.value)
       ;(glow.material as THREE.SpriteMaterial).opacity = (0.55 + 0.45 * uAct.value) * (1 - 0.6 * uLight.value)
       earth.rotation.y += dt * 0.06
+      const ma = uTime.value * 0.12 + 2.2
+      moon.position.set(EARTH.x + Math.cos(ma) * 2.1, EARTH.y + Math.sin(ma) * 0.45, EARTH.z + Math.sin(ma) * 2.1)
 
       view.p = smooth(view.p, progress(), dt, 4)
       view.tab = smooth(view.tab, props.current.tab * 0.55, dt, 2.2)

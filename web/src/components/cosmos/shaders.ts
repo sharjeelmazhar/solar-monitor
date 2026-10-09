@@ -98,6 +98,19 @@ void main(){
   gl_FragColor=vec4(col,1.);
 }`
 
+// The moon: grey regolith with dark maria and craters, lit by the sun.
+export const MOON_FRAG = /* glsl */ `
+uniform vec3 uSun;
+varying vec3 vN; varying vec3 vObj; varying vec3 vView;
+${NOISE}
+void main(){
+  float m=smoothstep(.05,.3,fbm3(vObj*1.6+vec3(7.)));
+  float cr=smoothstep(.55,.85,1.-abs(snoise(vObj*9.)))*.18;
+  vec3 c=mix(vec3(.62,.61,.6),vec3(.32,.32,.34),m)-cr;
+  float lit=smoothstep(-.05,.4,dot(vN,uSun));
+  gl_FragColor=vec4(c*(.04+.96*lit),1.);
+}`
+
 // Thin atmosphere halo around the earth (back faces, additive).
 export const ATMO_FRAG = /* glsl */ `
 uniform vec3 uSun; uniform float uLight;

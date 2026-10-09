@@ -6,6 +6,14 @@ const live = (pvW: number, pvPeak: number, t: number) => ({ t, pvW, today: { pvP
 const at = (h: number) => new Date(2026, 9, 8, h, 0).getTime()
 
 describe('weather', () => {
+  it('ignores a rain/thunder code when no rain is falling', () => {
+    expect(skyOf(95, 48, 0)).toBe('partly')
+    expect(skyOf(51, 20, 0)).toBe('clear')
+    expect(skyOf(61, 90, 0)).toBe('cloudy')
+    expect(skyOf(61, 90, 0.4)).toBe('rain')
+    expect(skyOf(95, 40, 0.3)).not.toBe('rain')
+  })
+
   it('maps WMO codes and cloud cover to a sky', () => {
     expect(skyOf(0, 5)).toBe('clear')
     expect(skyOf(2, 40)).toBe('partly')

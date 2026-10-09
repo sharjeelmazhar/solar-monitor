@@ -152,10 +152,10 @@ function ThreeD() {
   return (
     <div className="flex items-center justify-between gap-3">
       <div>
-        <div className="text-sm">3D energy core</div>
-        <div className="text-xs text-text-3">{supported ? 'Animated background behind the flow diagram. Turn it off on slow phones.' : 'Not supported by this browser'}</div>
+        <div className="text-sm">3D universe background</div>
+        <div className="text-xs text-text-3">{supported ? 'Live sun, earth and galaxy behind the app. Turn it off on slow phones.' : '3D needs graphics acceleration, which is off in this browser. In Chrome: Settings → System → "Use graphics acceleration when available", then restart Chrome.'}</div>
       </div>
-      <Switch label="3D energy core" checked={wanted && supported} onChange={setOn} />
+      <Switch label="3D universe background" checked={wanted && supported} onChange={setOn} />
     </div>
   )
 }
