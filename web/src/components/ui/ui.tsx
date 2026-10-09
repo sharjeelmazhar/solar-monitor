@@ -2,7 +2,7 @@ import { Dialog } from '@base-ui/react/dialog'
 import { Switch as BaseSwitch } from '@base-ui/react/switch'
 import { clsx, type ClassValue } from 'clsx'
 import { Info, Maximize2, X } from 'lucide-react'
-import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react'
+import { animate, motion, useMotionValue, useReducedMotion, useTransform, type HTMLMotionProps } from 'motion/react'
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { twMerge } from 'tailwind-merge'
 import { splitUnit } from '../../lib/format'
@@ -23,11 +23,20 @@ export function useClickOutside(ref: RefObject<HTMLElement | null>, onOutside: (
 /** True on devices with a mouse or trackpad: tooltips follow hover there, and need a tap on touch screens. */
 export const canHover = () => typeof matchMedia !== 'undefined' && matchMedia('(hover: hover) and (pointer: fine)').matches
 
-export function Card({ className, children, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
+/** Glass card. Rises into place with a slight 3D tilt the first time it scrolls into view. */
+export function Card({ className, children, style, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('glass rounded-3xl p-4 sm:p-5', className)} {...rest}>
+    <motion.div
+      initial={{ opacity: 0, y: 28, rotateX: 9 }}
+      whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
+      viewport={{ once: true, amount: 0.08 }}
+      transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
+      style={{ transformPerspective: 1100, transformOrigin: '50% 0%', ...style }}
+      className={cn('glass rounded-3xl p-4 sm:p-5', className)}
+      {...(rest as HTMLMotionProps<'div'>)}
+    >
       {children}
-    </div>
+    </motion.div>
   )
 }
 

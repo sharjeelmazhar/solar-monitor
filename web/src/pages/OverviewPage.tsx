@@ -1,25 +1,23 @@
 import { AlertTriangle, CheckCircle2, Info as InfoIcon, WifiOff, XCircle } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Legend, TimeChart, useHidden, type Series } from '../components/charts/charts'
+import { Hero } from '../components/cosmos/Hero'
 import { FlowDiagram } from '../components/flow/FlowDiagram'
 import { Card, CardHeader, ChartCard, Segmented, Stat, Value, cn } from '../components/ui/ui'
 import { activeWarnings, modeOf, parseRated, SEVERE, WARNINGS } from '../lib/decode'
 import { fmtDuration, fmtUnits, fmtW, fmtWh, hhmm, hhmmss } from '../lib/format'
-import { use3d, useBattIdle } from '../lib/prefs'
+import { useBattIdle } from '../lib/prefs'
 import { battAmps, battState, sourcesLabel, sourcesSentence, weakSolar } from '../lib/power'
 import { sunPhase, sunTimes } from '../lib/sun'
 import { currentWeather, skyWords } from '../lib/weather'
 import { useStale, useStore } from '../lib/store'
 import type { Info, Live } from '../lib/types'
 
-const EnergyCore3D = lazy(() => import('../components/flow/EnergyCore3D'))
-
-export default function OverviewPage({ dark }: { dark: boolean }) {
+export default function OverviewPage(_: { dark: boolean }) {
   const d = useStore((s) => s.live)
   const info = useStore((s) => s.info)
   const rated = useMemo(() => parseRated(info?.inv.qpiri), [info?.inv.qpiri])
   const ratedW = rated?.outW || 3200
-  const [fx3d] = use3d()
   const stale = useStale()
   const [, , idleW] = useBattIdle()
   const offline = !!d && stale != null
@@ -28,6 +26,7 @@ export default function OverviewPage({ dark }: { dark: boolean }) {
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+      <Hero d={d} offline={offline} noBatt={noBatt} />
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <Card className="relative overflow-hidden">
           <CardHeader
@@ -39,13 +38,6 @@ export default function OverviewPage({ dark }: { dark: boolean }) {
           <div className="relative mx-auto max-w-[560px]">
             {offline && <OfflineBadge seconds={stale!} t={d!.t} />}
             <div className={cn('transition-[filter,opacity] duration-500', offline && 'pointer-events-none opacity-40 blur-[1.5px] grayscale')} aria-hidden={offline || undefined}>
-            {fx3d && d?.ok && !offline && (
-              <div className="absolute left-1/2 top-1/2 aspect-square w-[62%] -translate-x-1/2 -translate-y-1/2 opacity-80">
-                <Suspense fallback={null}>
-                  <EnergyCore3D key={dark ? 'd' : 'l'} solar={Math.min(1, d.pvW / ratedW)} load={Math.min(1, d.loadW / ratedW)} battery={d.battPct / 100} />
-                </Suspense>
-              </div>
-            )}
             <div className="relative"><FlowDiagram d={d} ratedW={ratedW} still={offline} idleW={idleW} noBatt={noBatt} /></div>
             </div>
           </div>

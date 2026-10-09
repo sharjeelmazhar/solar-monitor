@@ -41,6 +41,7 @@
   --crit: #d03b3b;
   --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -8px rgba(15, 23, 42, 0.10);
   --glow-strength: 0.35;
+  --header-veil: color-mix(in srgb, var(--bg) 92%, transparent);
   color-scheme: light;
 }
 .dark {
@@ -196,4 +197,92 @@ body::before {
     inset 0 0 0 1px rgb(255 255 255 / 0.06),
     inset 0 4px 5px -3px rgb(255 255 255 / 0.16),
     inset 0 -4px 5px -3px rgb(255 255 255 / 0.08);
+}
+
+/* ---------- Cosmos theme: the 3D universe behind the app (see components/cosmos) ---------- */
+html.cosmos-3d {
+  --surface: rgba(255, 255, 255, 0.8);
+  --header-veil: color-mix(in srgb, #eef2fb 55%, transparent);
+}
+html.cosmos-3d.dark {
+  --surface: rgba(9, 12, 24, 0.5);
+  --surface-2: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.09);
+  --header-veil: color-mix(in srgb, #04060d 50%, transparent);
+}
+html.cosmos-3d body { background: #04060d; }
+html.cosmos-3d:not(.dark) body { background: #eef2fb; }
+html.cosmos-3d body::before { display: none; }
+/* no WebGL / 3D switched off: a painted night sky instead of the grid */
+html.dark:not(.cosmos-3d) body {
+  background:
+    radial-gradient(1px 1px at 12% 18%, #fff8, transparent), radial-gradient(1px 1px at 68% 32%, #fff6, transparent),
+    radial-gradient(1.5px 1.5px at 82% 12%, #fff9, transparent), radial-gradient(1px 1px at 36% 64%, #fff5, transparent),
+    radial-gradient(1px 1px at 88% 76%, #fff6, transparent), radial-gradient(1.5px 1.5px at 22% 86%, #fff7, transparent),
+    radial-gradient(50rem 30rem at 85% -5%, rgba(255, 150, 40, 0.16), transparent 60%),
+    radial-gradient(60rem 40rem at 0% 30%, rgba(110, 60, 200, 0.14), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+@layer components {
+  .glass { position: relative; }
+}
+.glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: calc(var(--spot, 0) * 1);
+  transition: opacity 0.35s;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / 0.07), transparent 45%);
+}
+.dark .glass::before {
+  background:
+    radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / 0.06), transparent 45%),
+    radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), rgb(245 179 0 / 0.07), transparent 50%);
+}
+.hero-figure .num {
+  background: linear-gradient(180deg, #fff 0%, #ffe3a3 55%, #f5b300 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 6px 30px rgb(245 179 0 / 0.35));
+}
+html:not(.dark) .hero-figure .num {
+  background: linear-gradient(180deg, #1b1a2e 0%, #4a3304 60%, #b26b00 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 6px 24px rgb(255 255 255 / 0.8));
+}
+.hero-figure .hero-unit { color: var(--text-2); -webkit-text-fill-color: var(--text-2); font-size: 0.32em; letter-spacing: 0; }
+.hero-ink { text-shadow: 0 1px 14px rgb(0 0 0 / 0.55); }
+html:not(.dark) .hero-ink { text-shadow: 0 1px 12px rgb(255 255 255 / 0.85); }
+.glass-chip {
+  background: rgb(8 10 22 / 0.42);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12), inset 0 1px 0 rgb(255 255 255 / 0.18), 0 8px 24px -12px rgb(0 0 0 / 0.6);
+}
+html:not(.dark) .glass-chip {
+  background: rgb(255 255 255 / 0.55);
+  box-shadow: inset 0 0 0 1px rgb(15 23 42 / 0.06), inset 0 1px 0 #fff, 0 8px 24px -14px rgb(15 23 42 / 0.25);
+}
+.hero-scroll-line {
+  position: relative;
+  width: 44px;
+  height: 1px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-3) 40%, transparent);
+}
+.hero-scroll-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--solar), transparent);
+  animation: scan 2.4s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+}
+@keyframes scan {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
 }

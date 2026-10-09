@@ -1,15 +1,17 @@
 import { BarChart3, CalendarClock, Cpu, Gauge, Monitor, Moon, PlugZap, Sun } from 'lucide-react'
-import { motion } from 'motion/react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { MotionConfig, motion } from 'motion/react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { IconButton, cn } from './components/ui/ui'
 import { hhmmss } from './lib/format'
-import { useClock, useTheme, type Theme } from './lib/prefs'
+import { use3d, useClock, useTheme, type Theme } from './lib/prefs'
 import { useStale, useStore } from './lib/store'
 import EnergyPage from './pages/EnergyPage'
 import HistoryPage from './pages/HistoryPage'
 import OutagesPage from './pages/OutagesPage'
 import OverviewPage from './pages/OverviewPage'
 import SystemPage from './pages/SystemPage'
+
+const CosmosBackdrop = lazy(() => import('./components/cosmos/CosmosBackdrop'))
 
 const TABS = [
   { id: 'overview', label: 'Live', icon: Gauge },
@@ -40,6 +42,9 @@ export default function App() {
   useEffect(() => { document.title = title }, [title])
   const nextTheme: Record<Theme, Theme> = { system: dark ? 'light' : 'dark', light: 'dark', dark: 'system' }
   const ThemeIcon = theme === 'system' ? Monitor : theme === 'dark' ? Moon : Sun
+  const [fx3d] = use3d()
+  useEffect(() => { document.documentElement.classList.toggle('cosmos-3d', fx3d) }, [fx3d])
+  useSpotlight()
 
   let page: ReactNode
   if (tab === 'history') page = <HistoryPage />
@@ -49,11 +54,14 @@ export default function App() {
   else page = <OverviewPage dark={dark} />
 
   return (
-    <div className="mx-auto min-h-dvh max-w-[1400px] px-4 pb-[calc(88px+env(safe-area-inset-bottom))] sm:px-6 md:pb-10">
+    <MotionConfig reducedMotion="user">
+    {/* the universe behind every page (WebGL); without 3D a painted starfield in CSS takes its place */}
+    {fx3d && <Suspense fallback={null}><CosmosBackdrop tab={TABS.findIndex((t) => t.id === tab)} light={!dark} /></Suspense>}
+    <div className="relative z-[1] mx-auto min-h-dvh max-w-[1400px] px-4 pb-[calc(88px+env(safe-area-inset-bottom))] sm:px-6 md:pb-10">
       <header className="sticky top-0 z-30 mb-4 pt-[env(safe-area-inset-top)]">
         {/* edge-to-edge frosted backdrop that fades out at the bottom: no box, no border */}
         <div aria-hidden className="pointer-events-none absolute -bottom-7 left-1/2 top-0 -z-10 w-screen -translate-x-1/2 backdrop-blur-xl"
-          style={{ background: 'linear-gradient(to bottom, color-mix(in srgb, var(--bg) 92%, transparent) calc(100% - 28px), transparent)', maskImage: 'linear-gradient(to bottom, #000 calc(100% - 28px), transparent)', WebkitMaskImage: 'linear-gradient(to bottom, #000 calc(100% - 28px), transparent)' }} />
+          style={{ background: 'linear-gradient(to bottom, var(--header-veil) calc(100% - 28px), transparent)', maskImage: 'linear-gradient(to bottom, #000 calc(100% - 28px), transparent)', WebkitMaskImage: 'linear-gradient(to bottom, #000 calc(100% - 28px), transparent)' }} />
         <div className="flex min-h-[72px] items-center gap-3">
           <Logo />
           <div className="min-w-0 flex-1">
@@ -99,7 +107,28 @@ export default function App() {
         ))}
       </nav>
     </div>
+    </MotionConfig>
   )
+}
+
+/** Cards light up softly under the mouse (a radial highlight that follows the pointer). Mouse/trackpad only. */
+function useSpotlight() {
+  useEffect(() => {
+    if (!matchMedia('(hover: hover) and (pointer: fine)').matches) return
+    let lastEl: HTMLElement | null = null
+    const on = (e: PointerEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest?.('.glass') as HTMLElement | null
+      if (lastEl && lastEl !== el) lastEl.style.removeProperty('--spot')
+      lastEl = el
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      el.style.setProperty('--mx', `${e.clientX - r.left}px`)
+      el.style.setProperty('--my', `${e.clientY - r.top}px`)
+      el.style.setProperty('--spot', '1')
+    }
+    addEventListener('pointermove', on, { passive: true })
+    return () => removeEventListener('pointermove', on)
+  }, [])
 }
 
 function Logo() {
