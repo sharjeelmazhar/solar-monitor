@@ -56,9 +56,10 @@ void main(){
   float mu=max(dot(vN,vView),0.);
   c*=.5+.7*pow(mu,.55);
   c=mix(c,vec3(1.,.6,.2),pow(1.-mu,3.)*.5);
-  c*=mix(.55,1.35,uAct)*(1.-.5*uNight);
+  c*=mix(.55,1.35,uAct)*(1.-.5*uNight*(1.-uLight));
   c=mix(c,vec3(1.,.95,.8)*1.2,.55*uLight*(1.-uNight));
-  c=mix(c,vec3(.86,.88,.93),.55*uLight*uNight);
+  c=mix(c,vec3(1.,.8,.45)*1.3,.5*uLight*uNight);
+  c+=vec3(1.,.55,.2)*pow(1.-mu,2.)*.6*uLight*uNight;
   gl_FragColor=vec4(c,1.);
 }`
 
@@ -96,7 +97,8 @@ void main(){
   float mu=max(dot(vN,vView),0.);
   col+=vec3(.25,.55,1.)*pow(1.-mu,3.)*(.12+.88*lit);
   col+=vec3(.08,.14,.3)*pow(1.-mu,1.6)*(1.-lit)*.9;
-  col=mix(col,vec3(.62,.7,.84),(1.-lit)*uLight*(.72-.34*uNight));
+  col=mix(col,vec3(.62,.7,.84),(1.-lit)*uLight*.72*(1.-uNight));
+  col=mix(col,col+vec3(.07,.11,.24),(1.-lit)*uLight*uNight);
   col+=night*(1.-lit)*uLight*uNight*.6;
   gl_FragColor=vec4(col,1.);
 }`
@@ -143,6 +145,7 @@ void main(){
   if(uLight>.995){
     vec3 s=mix(vec3(.93,.95,.98),vec3(.55,.74,.98),smoothstep(-.15,.75,d.y));
     s=mix(s,vec3(.99,.96,.9),smoothstep(.1,-.5,d.y)*.7);
+    s=mix(s,mix(vec3(.97,.86,.8),vec3(.68,.72,.9),smoothstep(-.3,.8,d.y)),uNight*.85);
     float q=max(dot(d,uSunDir),0.);
     gl_FragColor=vec4(s+vec3(1.,.82,.55)*(pow(q,6.)*.28+pow(q,40.)*.35),1.);
     return;
@@ -156,6 +159,7 @@ void main(){
   dark=mix(dark,dark*vec3(.8,.95,1.4)+vec3(.004,.008,.03),uNight);
   vec3 sky=mix(vec3(.93,.95,.98),vec3(.55,.74,.98),smoothstep(-.15,.75,d.y));
   sky=mix(sky,vec3(.99,.96,.9),smoothstep(.1,-.5,d.y)*.7);
+  sky=mix(sky,mix(vec3(.97,.86,.8),vec3(.68,.72,.9),smoothstep(-.3,.8,d.y)),uNight*.85);
   float sd=max(dot(d,uSunDir),0.);
   sky+=vec3(1.,.82,.55)*(pow(sd,6.)*.28+pow(sd,40.)*.35);
   sky+=vec3(1.)*smoothstep(.35,.95,n)*.05*(.5+.5*d.y);

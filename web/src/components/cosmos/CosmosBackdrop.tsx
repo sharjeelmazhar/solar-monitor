@@ -397,8 +397,8 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
       // data-heavy tabs: a calmer sun so charts keep their contrast
       view.calm = smooth(view.calm, props.current.tab === 0 ? 1 : 0.55, dt, 2)
       ;(glow.material as THREE.SpriteMaterial).opacity = Math.min(1, (0.55 + 0.45 * uAct.value) * (1 + 0.25 * L)) * (1 - 0.7 * n) * view.calm
-      halo.scale.setScalar((7 + 7 * uAct.value) * (1 - 0.4 * n))
-      ;(halo.material as THREE.SpriteMaterial).opacity = 0.45 * L * (1 - 0.6 * n) * view.calm
+      halo.scale.setScalar((7 + 7 * uAct.value) * (1 - 0.4 * n * (1 - L)))
+      ;(halo.material as THREE.SpriteMaterial).opacity = 0.45 * L * (1 + 0.3 * n) * view.calm
 
       // moon: orbit by day, the big moonlit hero at night; never let the camera fly through it
       const ma = uTime.value * 0.12 + 2.2
