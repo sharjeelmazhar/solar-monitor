@@ -303,3 +303,16 @@ html.cosmos-3d.dark .modal-glass { background: rgb(12 15 28 / 0.8) !important; }
   html.cosmos-3d .glass { backdrop-filter: blur(10px) saturate(140%); -webkit-backdrop-filter: blur(10px) saturate(140%); }
   html.cosmos-3d.dark { --surface: rgba(9, 12, 24, 0.62); }
 }
+
+/* soft scrim behind headline blocks so text stays readable over the sun or moon */
+.text-scrim { position: relative; isolation: isolate; }
+.text-scrim::before {
+  content: '';
+  position: absolute;
+  inset: -12px -16px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse 70% 75% at 22% 55%, rgb(4 6 13 / 0.55), transparent 72%);
+}
+html:not(.dark) .text-scrim::before { background: radial-gradient(ellipse 70% 75% at 22% 55%, rgb(240 245 252 / 0.6), transparent 72%); }
+html:not(.cosmos-3d) .text-scrim::before { display: none; }

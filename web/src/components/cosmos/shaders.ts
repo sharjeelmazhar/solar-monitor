@@ -57,7 +57,8 @@ void main(){
   c*=.5+.7*pow(mu,.55);
   c=mix(c,vec3(1.,.6,.2),pow(1.-mu,3.)*.5);
   c*=mix(.55,1.35,uAct)*(1.-.5*uNight);
-  c=mix(c,vec3(1.,.93,.74)*1.15,.38*uLight*(1.-uNight));
+  c=mix(c,vec3(1.,.95,.8)*1.2,.55*uLight*(1.-uNight));
+  c=mix(c,vec3(.86,.88,.93),.55*uLight*uNight);
   gl_FragColor=vec4(c,1.);
 }`
 
@@ -77,7 +78,7 @@ void main(){
 // Earth from real maps (NASA Blue Marble day colour + city lights, public domain), drifting procedural clouds,
 // ocean glint and a blue rim. The mesh is turned so the day/night line matches the real time.
 export const EARTH_FRAG = /* glsl */ `
-uniform float uTime; uniform vec3 uSun; uniform sampler2D uDay; uniform sampler2D uLights;
+uniform float uTime; uniform vec3 uSun; uniform sampler2D uDay; uniform sampler2D uLights; uniform float uLight; uniform float uNight;
 varying vec3 vN; varying vec3 vObj; varying vec3 vView; varying vec2 vUv;
 ${NOISE}
 void main(){
@@ -90,16 +91,19 @@ void main(){
   vec3 r=reflect(-uSun,vN);
   float spec=pow(max(dot(r,vView),0.),30.)*water*(1.-cl)*.6;
   vec3 day=mix(surf*1.15,vec3(1.),cl)*lit+spec*vec3(1.,.9,.72);
-  vec3 night=vec3(1.,.66,.3)*pow(lights,1.4)*1.8*(1.-cl*.7);
+  vec3 night=vec3(1.,.66,.3)*pow(lights,1.3)*2.8*(1.-cl*.7);
   vec3 col=day+night*(1.-lit)+surf*.035;
   float mu=max(dot(vN,vView),0.);
   col+=vec3(.25,.55,1.)*pow(1.-mu,3.)*(.12+.88*lit);
+  col+=vec3(.08,.14,.3)*pow(1.-mu,1.6)*(1.-lit)*.9;
+  col=mix(col,vec3(.62,.7,.84),(1.-lit)*uLight*(.72-.34*uNight));
+  col+=night*(1.-lit)*uLight*uNight*.6;
   gl_FragColor=vec4(col,1.);
 }`
 
 // The moon: grey regolith with dark maria and craters, lit by the sun.
 export const MOON_FRAG = /* glsl */ `
-uniform vec3 uSun;
+uniform vec3 uSun; uniform float uLight;
 varying vec3 vN; varying vec3 vObj; varying vec3 vView;
 ${NOISE}
 void main(){
@@ -111,7 +115,8 @@ void main(){
   c+=(smoothstep(.62,.72,k)-smoothstep(.72,.9,k)*.7)*.07;
   float lit=smoothstep(-.05,.4,dot(vN,uSun));
   float mu=max(dot(vN,vView),0.);
-  gl_FragColor=vec4(c*(.07+.98*lit)+vec3(.55,.62,.8)*pow(1.-mu,2.5)*.25*lit,1.);
+  vec3 o=c*(.07+.98*lit)+vec3(.55,.62,.8)*pow(1.-mu,2.5)*.25*lit;
+  gl_FragColor=vec4(mix(o,vec3(.78,.84,.94),(1.-lit)*.7*uLight),1.);
 }`
 
 // Thin atmosphere halo around the earth (back faces, additive).

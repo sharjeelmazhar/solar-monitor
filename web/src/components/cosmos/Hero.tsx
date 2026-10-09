@@ -30,7 +30,7 @@ export function Hero({ d, offline, noBatt }: { d: Live | null; offline: boolean;
   return (
     <motion.section
       style={reduce ? undefined : { opacity, y, rotateX, scale, transformPerspective: 900 }}
-      className="relative flex min-h-[54svh] flex-col justify-end pb-4 pt-6 md:min-h-[46svh] md:justify-center md:pb-8"
+      className="text-scrim relative flex min-h-[54svh] flex-col justify-end pb-4 pt-6 md:min-h-[46svh] md:justify-center md:pb-8"
       aria-label="Solar right now"
     >
       <motion.p initial={{ opacity: 0, y: 12, filter: 'blur(6px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}

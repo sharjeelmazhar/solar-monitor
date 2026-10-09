@@ -27,11 +27,11 @@ export const canHover = () => typeof matchMedia !== 'undefined' && matchMedia('(
 export function Card({ className, children, style, ...rest }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 28, rotateX: 9 }}
-      whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
+      initial={{ opacity: 0, y: 24, scale: 0.985 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
       viewport={{ once: true, amount: 0.08 }}
       transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
-      style={{ transformPerspective: 1100, transformOrigin: '50% 0%', ...style }}
+      style={{ transformOrigin: '50% 0%', ...style }}
       className={cn('glass rounded-3xl p-4 sm:p-5', className)}
       {...(rest as HTMLMotionProps<'div'>)}
     >
