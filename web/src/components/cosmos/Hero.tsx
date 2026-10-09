@@ -2,7 +2,9 @@ import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react'
 import { fmtW } from '../../lib/format'
 import { useBattIdle } from '../../lib/prefs'
 import { battState, sourcesSentence } from '../../lib/power'
-import { sunPhase } from '../../lib/sun'
+import { hhmm } from '../../lib/format'
+import { sunPhase, sunTimes } from '../../lib/sun'
+import { forceNight } from './night'
 import type { Live } from '../../lib/types'
 import { Value, cn } from '../ui/ui'
 
@@ -17,12 +19,13 @@ export function Hero({ d, offline, noBatt }: { d: Live | null; offline: boolean;
   const rotateX = useTransform(scrollY, [0, 320], [0, 18])
   const scale = useTransform(scrollY, [0, 320], [1, 0.94])
   const [, , idleW] = useBattIdle()
-  const night = sunPhase() === 'night'
+  const night = forceNight() || sunPhase() === 'night'
   const live = !!d?.ever && !offline
 
-  const kicker = !d ? 'Connecting to your monitor' : !d.ever ? 'Waiting for the inverter' : offline ? 'Last reading' : night ? 'Solar right now · night' : 'Solar right now'
+  const kicker = !d ? 'Connecting to your monitor' : !d.ever ? 'Waiting for the inverter' : offline ? 'Last reading' : night ? 'Night · solar is resting' : 'Solar right now'
   const sentence = live ? sourcesSentence(d!, idleW) : !d ? 'Looking for the solar monitor on this Wi-Fi…' : offline ? 'The monitor stopped answering. These are the last values.' : 'The monitor is online, the inverter has not answered yet.'
   const bs = d?.ever ? battState(d, idleW) : 'idle'
+  const rise = nextSunrise()
 
   return (
     <motion.section
@@ -35,12 +38,13 @@ export function Hero({ d, offline, noBatt }: { d: Live | null; offline: boolean;
         {kicker}
       </motion.p>
       <motion.h2 initial={{ opacity: 0, y: 24, filter: 'blur(10px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 0.9, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-        className="hero-figure mt-2 text-[clamp(56px,15vw,132px)] leading-[0.92] tracking-[-0.05em]">
+        className={cn('hero-figure mt-2 text-[clamp(56px,15vw,132px)] leading-[0.92] tracking-[-0.05em]', night && 'is-night')}>
         {d?.ever ? <Value text={fmtW(d.pvW)} unitClass="hero-unit" /> : <span className="num font-semibold">—</span>}
       </motion.h2>
       <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.18 }}
         className="hero-ink mt-3 max-w-[34ch] text-[15px] leading-snug text-text-2 md:text-base">
         {sentence}
+        {night && live && <span className="mt-1 block text-text-3">The sun rises at {hhmm(rise)}. Until then the battery and grid keep the home running.</span>}
       </motion.p>
       {d?.ever && (
         <motion.div initial="h" animate="s" transition={{ staggerChildren: 0.07, delayChildren: 0.28 }} className="mt-5 flex flex-wrap gap-2">
@@ -55,6 +59,12 @@ export function Hero({ d, offline, noBatt }: { d: Live | null; offline: boolean;
       </div>
     </motion.section>
   )
+}
+
+function nextSunrise() {
+  const n = new Date()
+  const t = sunTimes(n).rise
+  return t > n.getTime() ? t : sunTimes(new Date(n.getTime() + 864e5)).rise
 }
 
 function Chip({ tone, label, value, dim }: { tone: string; label: string; value: string; dim?: boolean }) {

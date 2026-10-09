@@ -6,6 +6,7 @@ import { Card, CardHeader, ChartCard, Empty, Segmented, Skeleton, Stat, Value } 
 import { addDays, dayLabel, fmtDuration, fmtUnits, fmtWh, fromYmd, isoToYmd, ymd, ymdIso } from '../lib/format'
 import { fetchDays, useStore } from '../lib/store'
 import type { DayRec } from '../lib/types'
+import { PageHeader } from '../components/cosmos/PageHeader'
 
 type Range = 'month' | '7' | '30' | 'year' | 'custom'
 
@@ -83,6 +84,7 @@ export default function EnergyPage() {
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+      <PageHeader kicker="Energy" title="Units and your bill" sub="What your panels made, what the grid cost, and where this month’s IESCO bill is heading." />
       <section className="grid gap-4 md:grid-cols-3">
         <Card className="relative overflow-hidden md:col-span-2">
           <span className="pointer-events-none absolute -right-10 -top-16 size-56 rounded-full bg-solar opacity-20 blur-3xl" />

@@ -42,9 +42,10 @@ export default function App() {
   useEffect(() => { document.title = title }, [title])
   const nextTheme: Record<Theme, Theme> = { system: dark ? 'light' : 'dark', light: 'dark', dark: 'system' }
   const ThemeIcon = theme === 'system' ? Monitor : theme === 'dark' ? Moon : Sun
-  const [fx3d] = use3d()
+  const [fx3d, setFx] = use3d()
   useEffect(() => { document.documentElement.classList.toggle('cosmos-3d', fx3d) }, [fx3d])
   useSpotlight()
+  const [slowTip, setSlowTip] = useSlowTip()
 
   let page: ReactNode
   if (tab === 'history') page = <HistoryPage />
@@ -96,6 +97,15 @@ export default function App() {
         </a>
       </footer>
 
+      {slowTip && (
+        <motion.div role="status" initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: 'spring', bounce: 0.3, duration: 0.6 }}
+          className="glass-chip fixed bottom-[calc(84px+env(safe-area-inset-bottom))] left-1/2 z-40 flex w-max max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-3 rounded-full py-1.5 pl-4 pr-1.5 text-[13px] md:bottom-6">
+          <span className="text-text-2">3D looks slow on this device</span>
+          <button className="focus-ring min-h-8 rounded-full bg-white/10 px-3 font-medium text-text hover:bg-white/20" onClick={() => { setFx(false); setSlowTip(false) }}>Turn off</button>
+          <button aria-label="Dismiss" className="focus-ring grid size-8 place-items-center rounded-full text-text-3 hover:text-text" onClick={() => setSlowTip(false)}>✕</button>
+        </motion.div>
+      )}
+
       <nav className="glass-nav fixed left-1/2 bottom-[calc(12px+env(safe-area-inset-bottom))] z-30 flex w-[75%] max-w-[440px] -translate-x-1/2 rounded-full p-[5px] md:hidden" aria-label="Sections">
         {TABS.map((t) => (
           <button key={t.id} onClick={() => go(t.id)} aria-current={tab === t.id ? 'page' : undefined}
@@ -109,6 +119,21 @@ export default function App() {
     </div>
     </MotionConfig>
   )
+}
+
+/** Small tip (once per browser) when the 3D background can't keep up even at its lowest quality. */
+function useSlowTip() {
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    const on = () => {
+      try { if (localStorage.getItem('slowTipShown')) return; localStorage.setItem('slowTipShown', '1') } catch { /* private mode */ }
+      setShow(true)
+    }
+    addEventListener('cosmos-slow', on)
+    return () => removeEventListener('cosmos-slow', on)
+  }, [])
+  useEffect(() => { if (!show) return; const t = setTimeout(() => setShow(false), 14000); return () => clearTimeout(t) }, [show])
+  return [show, setShow] as const
 }
 
 /** Cards light up softly under the mouse (a radial highlight that follows the pointer). Mouse/trackpad only. */

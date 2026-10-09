@@ -7,6 +7,7 @@ import { addDays, dayLabel, fmtDuration, fmtWh, fromYmd, hhmm, hourLabel, ymd } 
 import { duringOutage, findOutages, outageStats, type Outage } from '../lib/outages'
 import { fetchDay, useStale, useStore } from '../lib/store'
 import type { MinRec } from '../lib/types'
+import { PageHeader } from '../components/cosmos/PageHeader'
 
 export default function OutagesPage() {
   const today = useStore((s) => s.live?.today.date) || ymd(new Date())
@@ -71,6 +72,7 @@ export default function OutagesPage() {
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+      <PageHeader kicker="Outages" title="Load-shedding, logged" sub="Every grid cut the monitor saw: when it went, when it came back, and how long it lasted." />
       <Card className="flex flex-wrap items-center gap-3 !py-3">
         <div className="flex items-center gap-2 text-sm font-semibold"><PlugZap size={18} className="text-grid" /> Grid outages (load-shedding)</div>
         <div className="flex-1" />

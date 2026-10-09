@@ -257,7 +257,7 @@ html:not(.dark) .hero-figure .num {
   filter: drop-shadow(0 6px 24px rgb(255 255 255 / 0.8));
 }
 .hero-figure .hero-unit { color: var(--text-2); -webkit-text-fill-color: var(--text-2); font-size: 0.32em; letter-spacing: 0; }
-.hero-ink { text-shadow: 0 1px 14px rgb(0 0 0 / 0.55); }
+.hero-ink { text-shadow: 0 1px 2px rgb(0 0 0 / 0.85), 0 0 22px rgb(0 0 0 / 0.75); }
 html:not(.dark) .hero-ink { text-shadow: 0 1px 12px rgb(255 255 255 / 0.85); }
 .glass-chip {
   background: rgb(8 10 22 / 0.42);
@@ -287,3 +287,13 @@ html:not(.dark) .glass-chip {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }
 }
+
+/* night: the big number turns moonlight silver */
+.hero-figure.is-night .num { background: linear-gradient(180deg, #fff 0%, #dfe6ff 55%, #9fb0e8 100%); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 6px 30px rgb(150 170 255 / 0.35)); }
+html:not(.dark) .hero-figure.is-night .num { background: linear-gradient(180deg, #1b1a2e 0%, #2b3566 60%, #4b5fa8 100%); -webkit-background-clip: text; background-clip: text; }
+.page-title { background: linear-gradient(180deg, var(--text) 30%, color-mix(in srgb, var(--text) 62%, transparent)); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 14px rgb(0 0 0 / 0.35)); }
+html:not(.dark) .page-title { filter: drop-shadow(0 2px 12px rgb(255 255 255 / 0.8)); }
+/* popups: frosted glass over the universe */
+.modal-glass { background: var(--surface-solid) !important; }
+html.cosmos-3d .modal-glass { background: rgb(255 255 255 / 0.86) !important; backdrop-filter: blur(28px) saturate(160%); -webkit-backdrop-filter: blur(28px) saturate(160%); }
+html.cosmos-3d.dark .modal-glass { background: rgb(12 15 28 / 0.8) !important; }

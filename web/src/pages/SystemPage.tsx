@@ -8,6 +8,7 @@ import { use3d, useBattIdle, useClock, webglAvailable, type Theme } from '../lib
 import { API_BASE, saveSettings, useStore } from '../lib/store'
 import { parseRated } from '../lib/decode'
 import { Alerts, alertsOf } from './OverviewPage'
+import { PageHeader } from '../components/cosmos/PageHeader'
 
 function Row({ k, v, help }: { k: string; v: ReactNode; help?: string }) {
   return (
@@ -27,6 +28,7 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+      <PageHeader kicker="System" title="Inverter and monitor" sub="Inverter settings, device health, alerts and how the app looks." />
       {d?.ever && <Alerts items={alertsOf(d, undefined, parseRated(info?.inv.qpiri)?.battV === 0)} />}
       <div className="grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">
         <div className="flex flex-col gap-4 [&>*]:min-w-0 [&>*:last-child]:flex-1">

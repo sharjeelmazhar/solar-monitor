@@ -6,6 +6,7 @@ import { addDays, dayLabel, fmtDuration, fmtW, fmtWh, fromYmd, hhmm, isoToYmd, y
 import { findOutages } from '../lib/outages'
 import { fetchDay, useStore } from '../lib/store'
 import type { MinRec } from '../lib/types'
+import { PageHeader } from '../components/cosmos/PageHeader'
 
 const kfmt = (v: number) => (Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(Math.round(v)))
 
@@ -66,6 +67,7 @@ export default function HistoryPage() {
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+      <PageHeader kicker="History" title="Every minute, every day" sub="Pick a day to see solar, home, battery and the grid, minute by minute." />
       <Card className="flex flex-wrap items-center gap-2 !py-3">
         <IconButton label="Previous day" disabled={date <= histFrom} onClick={() => setDate(addDays(date, -1))}><ChevronLeft size={18} /></IconButton>
         <label className="relative flex min-h-10 flex-1 items-center justify-center rounded-2xl bg-surface-2 px-3 text-sm font-semibold sm:flex-none sm:min-w-64">

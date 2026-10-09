@@ -2,13 +2,17 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { parseRated } from '../../lib/decode'
 import { getState } from '../../lib/store'
-import { sunPhase } from '../../lib/sun'
+import { HOME, sunPhase, sunTimes } from '../../lib/sun'
+import EARTH_DAY from '../../assets/earth/day.webp'
+import EARTH_NIGHT from '../../assets/earth/night.webp'
+import { forceNight } from './night'
 import {
   ATMO_FRAG, CORONA_FRAG, EARTH_FRAG, MOON_FRAG, GALAXY_VERT, POINT_FRAG, SKY_FRAG, SKY_VERT, SPHERE_VERT, STAR_VERT, STREAM_VERT, SUN_FRAG,
 } from './shaders'
 
-// Full-screen 3D universe behind the whole web app: a live sun (its glow follows solar output), the earth
-// receiving a stream of energy, a spiral galaxy and a starfield. Scrolling flies the camera through it,
+// Full-screen 3D universe behind the whole web app: a live sun (its glow follows solar output), the real earth
+// turned to the current time with a beacon on home, the moon (the star of the night view), a spiral galaxy
+// and a starfield. Scrolling flies the camera through it,
 // switching tabs swings it to a new angle, and the pointer adds a little parallax. One WebGL canvas,
 // all procedural (no textures), paused when the tab is hidden, quality steps down on slow phones.
 
@@ -110,6 +114,52 @@ function solarLevel() {
   return { act: night ? 0.1 : 0.32 + 0.68 * f, flow: f < 0.01 ? 0 : 0.08 + 0.92 * f, night }
 }
 
+const D2R = Math.PI / 180
+/** Direction of a latitude/longitude on three.js's sphere (matches an equirectangular map's UVs). */
+function geoDir(lat: number, lon: number) {
+  const phi = (lon + 180) * D2R, c = Math.cos(lat * D2R)
+  return new THREE.Vector3(-Math.cos(phi) * c, Math.sin(lat * D2R), Math.sin(phi) * c)
+}
+
+function markerTexture() {
+  const c = document.createElement('canvas')
+  c.width = c.height = 64
+  const g = c.getContext('2d')!
+  const r = g.createRadialGradient(32, 32, 0, 32, 32, 32)
+  r.addColorStop(0, 'rgba(255,255,255,1)')
+  r.addColorStop(0.18, 'rgba(255,214,120,1)')
+  r.addColorStop(0.4, 'rgba(255,170,40,.35)')
+  r.addColorStop(1, 'rgba(255,150,0,0)')
+  g.fillStyle = r
+  g.fillRect(0, 0, 64, 64)
+  return new THREE.CanvasTexture(c)
+}
+
+function moonGlowTexture() {
+  const c = document.createElement('canvas')
+  c.width = c.height = 128
+  const g = c.getContext('2d')!
+  const r = g.createRadialGradient(64, 64, 0, 64, 64, 64)
+  r.addColorStop(0.2, 'rgba(200,215,255,.45)')
+  r.addColorStop(0.5, 'rgba(150,170,255,.12)')
+  r.addColorStop(1, 'rgba(120,140,255,0)')
+  g.fillStyle = r
+  g.fillRect(0, 0, 128, 128)
+  return new THREE.CanvasTexture(c)
+}
+
+/** 0 by day, 1 at night, in between during the 90 minutes around sunrise and sunset. */
+function nightness(now = new Date()) {
+  if (forceNight()) return 1
+  const { rise, set } = sunTimes(now)
+  const t = now.getTime()
+  const ramp = 45 * 60000
+  if (t < rise - ramp || t > set + ramp) return 1
+  if (t > rise + ramp && t < set - ramp) return 0
+  const edge = t < (rise + set) / 2 ? (rise + ramp - t) / (2 * ramp) : (t - (set - ramp)) / (2 * ramp)
+  return Math.max(0, Math.min(1, edge))
+}
+
 export default function CosmosBackdrop({ tab, light }: { tab: number; light: boolean }) {
   const host = useRef<HTMLDivElement>(null)
   const props = useRef({ tab, light })
@@ -121,7 +171,7 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches
     let dpr = Math.min(devicePixelRatio || 1, mobile ? 1.25 : 1.5)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'high-performance' })
+    const renderer = new THREE.WebGLRenderer({ antialias: !mobile, alpha: false, powerPreference: 'high-performance' })
     renderer.setPixelRatio(dpr)
     renderer.setSize(innerWidth, innerHeight, false)
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -132,21 +182,22 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
     const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 600)
     const uTime = { value: 0 }
     const uLight = { value: props.current.light ? 1 : 0 }
+    const uNight = { value: nightness() }
     const uPix = { value: dpr }
     const uAct = { value: 0.5 }
     const uFlow = { value: 0.2 }
-    const sunDir = new THREE.Vector3().subVectors(SUN, EARTH).normalize()
+    const toSun = new THREE.Vector3().subVectors(SUN, EARTH).normalize()
+    const up = new THREE.Vector3(0, 1, 0)
     const add = THREE.AdditiveBlending
+    const disposables: { dispose(): void }[] = []
 
-    // sky dome (always behind everything)
     const sky = new THREE.Mesh(new THREE.SphereGeometry(500, 48, 24),
-      new THREE.ShaderMaterial({ vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, uniforms: { uTime, uLight }, side: THREE.BackSide, depthWrite: false }))
+      new THREE.ShaderMaterial({ vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, uniforms: { uTime, uLight, uNight }, side: THREE.BackSide, depthWrite: false }))
     sky.renderOrder = -10
     scene.add(sky)
 
-    const starPts = new THREE.Points(stars(mobile ? 1600 : 2600),
-      new THREE.ShaderMaterial({ vertexShader: STAR_VERT, fragmentShader: POINT_FRAG, uniforms: { uTime, uPix, uLight }, blending: add, depthWrite: false, transparent: true }))
-    scene.add(starPts)
+    scene.add(new THREE.Points(stars(mobile ? 1600 : 2600),
+      new THREE.ShaderMaterial({ vertexShader: STAR_VERT, fragmentShader: POINT_FRAG, uniforms: { uTime, uPix, uLight, uNight }, blending: add, depthWrite: false, transparent: true })))
 
     const gal = new THREE.Points(galaxy(mobile ? 5000 : 9000),
       new THREE.ShaderMaterial({ vertexShader: GALAXY_VERT, fragmentShader: POINT_FRAG, uniforms: { uTime, uPix, uLight }, blending: add, depthWrite: false, transparent: true }))
@@ -154,57 +205,95 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
     gal.rotation.set(0.95, 0.3, 0.35)
     scene.add(gal)
 
-    // the sun: surface, corona shell and a soft glow sprite
-    const sun = new THREE.Mesh(new THREE.SphereGeometry(1.6, 64, 48),
-      new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: SUN_FRAG, uniforms: { uTime, uAct } }))
-    scene.add(sun)
-    const corona = new THREE.Mesh(new THREE.SphereGeometry(2.6, 48, 32),
-      new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: CORONA_FRAG, uniforms: { uTime, uAct, uLight }, blending: add, side: THREE.BackSide, depthWrite: false, transparent: true }))
-    scene.add(corona)
+    // the sun: surface, corona shell and a soft glow sprite (all dim at night)
+    scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.6, 64, 48),
+      new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: SUN_FRAG, uniforms: { uTime, uAct, uNight } })))
+    scene.add(new THREE.Mesh(new THREE.SphereGeometry(2.6, 48, 32),
+      new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: CORONA_FRAG, uniforms: { uTime, uAct, uLight }, blending: add, side: THREE.BackSide, depthWrite: false, transparent: true })))
     const glowTex = glowTexture()
+    disposables.push(glowTex)
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: add, depthWrite: false, transparent: true }))
-    glow.scale.setScalar(13)
     scene.add(glow)
 
-    // the earth + atmosphere
-    const earthU = { uTime, uSun: { value: sunDir } }
-    const earth = new THREE.Mesh(new THREE.SphereGeometry(0.85, 64, 48),
+    // the earth from real maps, turned to the real time of day; a beacon marks home (Pakistan)
+    const tl = new THREE.TextureLoader()
+    const dayTex = tl.load(EARTH_DAY), lightsTex = tl.load(EARTH_NIGHT)
+    for (const t of [dayTex, lightsTex]) { t.anisotropy = 4; disposables.push(t) }
+    const earthU = { uTime, uSun: { value: toSun }, uDay: { value: dayTex }, uLights: { value: lightsTex } }
+    const earth = new THREE.Mesh(new THREE.SphereGeometry(0.85, 96, 64),
       new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: EARTH_FRAG, uniforms: earthU }))
     earth.position.copy(EARTH)
-    earth.rotation.z = 0.41
     scene.add(earth)
     const atmo = new THREE.Mesh(new THREE.SphereGeometry(0.98, 48, 32),
       new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: ATMO_FRAG, uniforms: { uSun: earthU.uSun, uLight }, blending: add, side: THREE.BackSide, depthWrite: false, transparent: true }))
     atmo.position.copy(EARTH)
     scene.add(atmo)
+    const HOME_OBJ = geoDir(HOME.lat, HOME.lon)
+    const markTex = markerTexture()
+    disposables.push(markTex)
+    const marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: markTex, blending: add, depthWrite: false, transparent: true }))
+    marker.position.copy(HOME_OBJ).multiplyScalar(0.875)
+    earth.add(marker)
+    // which way the earth faces: the point under the sun (subsolar longitude from UTC) must face the sun
+    const homeWorld = new THREE.Vector3()
+    const turnEarth = () => {
+      const utcH = (Date.now() / 3600000) % 24
+      const sub = geoDir(0, (12 - utcH) * 15)
+      earth.rotation.y = Math.atan2(sub.z, sub.x) - Math.atan2(toSun.z, toSun.x)
+      earth.updateMatrixWorld()
+      homeWorld.copy(HOME_OBJ).applyQuaternion(earth.quaternion).normalize()
+    }
+    turnEarth()
 
-    // the moon, orbiting the earth
-    const moon = new THREE.Mesh(new THREE.SphereGeometry(0.24, 40, 28),
-      new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: MOON_FRAG, uniforms: { uSun: earthU.uSun } }))
+    // the moon: small and orbiting by day; at night it comes forward, big and moonlit, for the opening view
+    const moonLight = { value: new THREE.Vector3() }
+    const moon = new THREE.Mesh(new THREE.SphereGeometry(0.26, 48, 32),
+      new THREE.ShaderMaterial({ vertexShader: SPHERE_VERT, fragmentShader: MOON_FRAG, uniforms: { uSun: moonLight } }))
     scene.add(moon)
+    const moonGlowTex = moonGlowTexture()
+    disposables.push(moonGlowTex)
+    const moonGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: moonGlowTex, blending: add, depthWrite: false, transparent: true }))
+    scene.add(moonGlow)
 
     // energy stream sun -> earth (quadratic curve that bows upwards)
     const ctrl = new THREE.Vector3().addVectors(SUN, EARTH).multiplyScalar(0.5).add(new THREE.Vector3(0, 1.6, 0.8))
     const from = new THREE.Vector3().subVectors(EARTH, SUN).normalize().multiplyScalar(1.7)
-    const to = EARTH.clone().add(new THREE.Vector3().subVectors(SUN, EARTH).normalize().multiplyScalar(0.95))
-    const flow = new THREE.Points(stream(mobile ? 260 : 420),
+    const to = EARTH.clone().add(toSun.clone().multiplyScalar(0.95))
+    scene.add(new THREE.Points(stream(mobile ? 260 : 420),
       new THREE.ShaderMaterial({
         vertexShader: STREAM_VERT, fragmentShader: POINT_FRAG, blending: add, depthWrite: false, transparent: true,
         uniforms: { uTime, uFlow, uPix, uA: { value: from }, uB: { value: ctrl }, uC: { value: to } },
-      }))
-    scene.add(flow)
+      })))
 
-    // camera flight path: hero on the sun -> past the earth -> wide shot with the galaxy
-    const camPath = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(2.4, 1.6, 14.5), new THREE.Vector3(5.2, 1.6, 7.6), new THREE.Vector3(7.4, 1.6, 1.4),
-      new THREE.Vector3(5, 5, 14), new THREE.Vector3(-2, 9, 25),
+    // Two camera flights, blended by night-ness. Day: the sun -> home on the earth -> wide shot with the galaxy.
+    // Night: the moon up close -> home on the dark side (city lights) -> the same wide shot.
+    const dayCam = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(2.4, 1.6, 14.5), new THREE.Vector3(5.2, 1.6, 7.6), new THREE.Vector3(), new THREE.Vector3(5, 5, 14), new THREE.Vector3(-2, 9, 25),
     ])
-    const lookPath = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-2.2, -1.5, -1), new THREE.Vector3(3.4, -0.5, -1.6), new THREE.Vector3(6.6, 0.3, -3.2),
-      new THREE.Vector3(-4, 2, -20), new THREE.Vector3(-14, 5, -45),
+    const dayLook = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-2.2, -1.5, -1), new THREE.Vector3(3.4, -0.5, -1.6), EARTH.clone(), new THREE.Vector3(-4, 2, -20), new THREE.Vector3(-14, 5, -45),
     ])
+    const nightCam = new THREE.CatmullRomCurve3([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(5, 5, 14), new THREE.Vector3(-2, 9, 25)])
+    const nightLook = new THREE.CatmullRomCurve3([new THREE.Vector3(), new THREE.Vector3(), EARTH.clone(), new THREE.Vector3(-4, 2, -20), new THREE.Vector3(-14, 5, -45)])
+    const away = toSun.clone().negate()
+    const side = new THREE.Vector3().crossVectors(up, away).normalize()
+    const moonHero = EARTH.clone().addScaledVector(away, 3.4).addScaledVector(side, 1.7).addScaledVector(up, 0.9)
+    const placePaths = () => {
+      // look at home from a little sun-ward (day) or straight on (night) so the beacon sits on the visible face
+      const dayView = homeWorld.clone().multiplyScalar(0.8).addScaledVector(toSun, 0.35).addScaledVector(up, 0.12).normalize()
+      dayCam.points[2].copy(EARTH).addScaledVector(dayView, 3.4)
+      const nightView = homeWorld.clone().addScaledVector(up, 0.12).normalize()
+      nightCam.points[2].copy(EARTH).addScaledVector(nightView, 3.2)
+      nightCam.points[0].copy(moonHero).addScaledVector(away, 4.4).addScaledVector(side, -1.6).addScaledVector(up, 0.5)
+      nightLook.points[0].copy(moonHero).addScaledVector(side, -2.0).addScaledVector(up, -1.0)
+      nightCam.points[1].copy(nightCam.points[0]).lerp(nightCam.points[2], 0.5).addScaledVector(up, 0.8)
+      nightLook.points[1].copy(moonHero).lerp(EARTH, 0.7)
+      for (const c of [dayCam, nightCam, dayLook, nightLook]) c.updateArcLengths()
+    }
+    placePaths()
+
     const view = { p: 0, tab: props.current.tab * 0.55, mx: 0, my: 0, tmx: 0, tmy: 0 }
-    const pos = new THREE.Vector3(), look = new THREE.Vector3(), rot = new THREE.Matrix4()
+    const pos = new THREE.Vector3(), look = new THREE.Vector3(), tmp = new THREE.Vector3(), rot = new THREE.Matrix4()
 
     const progress = () => {
       const max = document.documentElement.scrollHeight - innerHeight
@@ -221,45 +310,71 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
     addEventListener('pointermove', onMove, { passive: true })
     addEventListener('resize', onResize)
 
-    let raf = 0, last = performance.now(), slow = 0, frames = 0, skip = false, odd = false
-    const level = { act: 0.5, flow: 0.2, at: 0 }
+    let raf = 0, last = performance.now(), slow = 0, frames = 0, skip = false, odd = false, warned = false
+    const level = { act: 0.5, flow: 0.2, night: uNight.value, at: 0 }
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame)
       const dt = Math.min(0.1, (now - last) / 1000)
       last = now
-      // quality governor: if frames take > 26 ms for a while, lower resolution, then halve the frame rate
+      // quality governor: lower resolution, then halve the frame rate; finally suggest turning 3D off
       frames++
       if (dt > 0.026) slow++
       if (frames === 90) {
         if (slow > 45 && dpr > 0.75) { dpr = Math.max(0.75, dpr - 0.25); renderer.setPixelRatio(dpr); uPix.value = dpr; renderer.setSize(innerWidth, innerHeight, false) }
-        else if (slow > 45) skip = true
+        else if (slow > 45 && !skip) skip = true
+        else if (slow > 60 && skip && !warned) { warned = true; dispatchEvent(new CustomEvent('cosmos-slow')) }
         frames = slow = 0
       }
       if (skip && (odd = !odd)) return
 
-      if (now - level.at > 1000) Object.assign(level, solarLevel(), { at: now })
+      if (now - level.at > 1000) {
+        Object.assign(level, solarLevel(), { night: nightness(), at: now })
+        turnEarth()
+        placePaths()
+      }
       if (!reduce) uTime.value += dt
-      uAct.value = smooth(uAct.value, level.act, dt, 1.5)
-      uFlow.value = smooth(uFlow.value, level.flow, dt, 1.5)
-      uLight.value = smooth(uLight.value, props.current.light ? 1 : 0, dt, 3)
-      glow.scale.setScalar(10 + 12 * uAct.value)
-      ;(glow.material as THREE.SpriteMaterial).opacity = (0.55 + 0.45 * uAct.value) * (1 - 0.6 * uLight.value)
-      earth.rotation.y += dt * 0.06
-      const ma = uTime.value * 0.12 + 2.2
-      moon.position.set(EARTH.x + Math.cos(ma) * 2.1, EARTH.y + Math.sin(ma) * 0.45, EARTH.z + Math.sin(ma) * 2.1)
+      uAct.value = smooth(uAct.value, level.act, dt, 1.2)
+      uFlow.value = smooth(uFlow.value, level.flow, dt, 1.2)
+      uNight.value = smooth(uNight.value, level.night, dt, 0.8)
+      uLight.value = smooth(uLight.value, props.current.light ? 1 : 0, dt, 2.5)
+      const n = uNight.value
+      glow.scale.setScalar((10 + 12 * uAct.value) * (1 - 0.45 * n))
+      ;(glow.material as THREE.SpriteMaterial).opacity = (0.55 + 0.45 * uAct.value) * (1 - 0.6 * uLight.value) * (1 - 0.55 * n)
 
-      view.p = smooth(view.p, progress(), dt, 4)
-      view.tab = smooth(view.tab, props.current.tab * 0.55, dt, 2.2)
-      view.mx = smooth(view.mx, view.tmx, dt, 2.5)
-      view.my = smooth(view.my, view.tmy, dt, 2.5)
-      const wobble = reduce ? 0 : Math.sin(uTime.value * 0.07) * 0.08
-      rot.makeRotationY(view.tab + wobble)
-      camPath.getPointAt(view.p, pos).applyMatrix4(rot)
-      lookPath.getPointAt(view.p, look).applyMatrix4(rot)
-      // portrait phones: sun near the top, above the headline (fades out as the flight moves on)
-      if (camera.aspect < 0.8) { const k = 1 - Math.min(1, view.p * 4); look.x += 2.6 * k; look.y -= 4.6 * k }
-      pos.x += view.mx * 0.7
-      pos.y -= view.my * 0.45
+      // moon: orbit by day, the big moonlit hero at night
+      const ma = uTime.value * 0.12 + 2.2
+      tmp.set(EARTH.x + Math.cos(ma) * 2.1, EARTH.y + Math.sin(ma) * 0.45, EARTH.z + Math.sin(ma) * 2.1)
+      moon.position.copy(tmp).lerp(moonHero, n)
+      moon.scale.setScalar(1 + 1.6 * n)
+      moon.rotation.y += dt * 0.02
+      tmp.subVectors(SUN, moon.position).normalize()
+      moonLight.value.copy(tmp).lerp(tmp.subVectors(camera.position, moon.position).normalize().addScaledVector(side, -0.5), 0.8 * n).normalize()
+      moonGlow.position.copy(moon.position)
+      moonGlow.scale.setScalar(2.4 * (1 + 1.6 * n))
+      ;(moonGlow.material as THREE.SpriteMaterial).opacity = n * (1 - 0.8 * uLight.value)
+
+      // home beacon pulses softly
+      const beat = 0.5 + 0.5 * Math.sin(uTime.value * 2.4)
+      marker.scale.setScalar(0.1 + 0.05 * beat)
+      ;(marker.material as THREE.SpriteMaterial).opacity = 0.75 + 0.25 * beat
+
+      // camera: gentle springs on scroll, tab swing and pointer so every move eases in and out
+      view.p = smooth(view.p, progress(), dt, 2.6)
+      view.tab = smooth(view.tab, props.current.tab * 0.55, dt, 1.4)
+      view.mx = smooth(view.mx, view.tmx, dt, 1.8)
+      view.my = smooth(view.my, view.tmy, dt, 1.8)
+      const p = view.p * view.p * (3 - 2 * view.p) // ease in-out along the flight
+      const wobble = reduce ? 0 : Math.sin(uTime.value * 0.07) * 0.06
+      rot.makeRotationY(view.tab * (1 - p * 0.5) + wobble)
+      dayCam.getPointAt(p, pos)
+      pos.lerp(nightCam.getPointAt(p, tmp), n)
+      dayLook.getPointAt(p, look)
+      look.lerp(nightLook.getPointAt(p, tmp), n)
+      // tabs swing the view around the earth/sun midpoint
+      pos.sub(EARTH).applyMatrix4(rot).add(EARTH)
+      if (camera.aspect < 0.8) { const k = 1 - Math.min(1, view.p * 4); look.x += 2.6 * k * (1 - n); look.y -= 4.6 * k * (1 - n) + 0.5 * k * n; look.addScaledVector(side, 1.5 * k * n) }
+      pos.x += view.mx * 0.6
+      pos.y -= view.my * 0.4
       camera.position.copy(pos)
       camera.lookAt(look)
       renderer.render(scene, camera)
@@ -280,7 +395,7 @@ export default function CosmosBackdrop({ tab, light }: { tab: number; light: boo
         m.geometry?.dispose()
         ;(m.material as THREE.Material | undefined)?.dispose?.()
       })
-      glowTex.dispose()
+      disposables.forEach((d) => d.dispose())
       renderer.dispose()
       renderer.domElement.remove()
     }

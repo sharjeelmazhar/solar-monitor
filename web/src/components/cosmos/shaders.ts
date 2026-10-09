@@ -32,16 +32,16 @@ float fbm3(vec3 p){float a=.5,s=0.;for(int i=0;i<3;i++){s+=a*snoise(p);p*=2.07;a
 
 /** Sphere vertex shader: world normal, object normal (for surface patterns) and view vector. */
 export const SPHERE_VERT = /* glsl */ `
-varying vec3 vN; varying vec3 vObj; varying vec3 vView;
+varying vec3 vN; varying vec3 vObj; varying vec3 vView; varying vec2 vUv;
 void main(){
   vec4 w=modelMatrix*vec4(position,1.);
-  vN=normalize(mat3(modelMatrix)*normal); vObj=normalize(position); vView=normalize(cameraPosition-w.xyz);
+  vN=normalize(mat3(modelMatrix)*normal); vObj=normalize(position); vView=normalize(cameraPosition-w.xyz); vUv=uv;
   gl_Position=projectionMatrix*viewMatrix*w;
 }`
 
 // The sun: boiling granulation, limb darkening; brightness and colour follow solar output (uAct 0..1).
 export const SUN_FRAG = /* glsl */ `
-uniform float uTime; uniform float uAct;
+uniform float uTime; uniform float uAct; uniform float uNight;
 varying vec3 vN; varying vec3 vObj; varying vec3 vView;
 ${NOISE}
 void main(){
@@ -56,7 +56,7 @@ void main(){
   float mu=max(dot(vN,vView),0.);
   c*=.5+.7*pow(mu,.55);
   c=mix(c,vec3(1.,.6,.2),pow(1.-mu,3.)*.5);
-  c*=mix(.55,1.35,uAct);
+  c*=mix(.55,1.35,uAct)*(1.-.5*uNight);
   gl_FragColor=vec4(c,1.);
 }`
 
@@ -73,28 +73,26 @@ void main(){
   gl_FragColor=vec4(c,1.);
 }`
 
-// Earth: procedural continents, ice caps, drifting clouds, city lights on the night side, blue rim.
+// Earth from real maps (NASA Blue Marble day colour + city lights, public domain), drifting procedural clouds,
+// ocean glint and a blue rim. The mesh is turned so the day/night line matches the real time.
 export const EARTH_FRAG = /* glsl */ `
-uniform float uTime; uniform vec3 uSun;
-varying vec3 vN; varying vec3 vObj; varying vec3 vView;
+uniform float uTime; uniform vec3 uSun; uniform sampler2D uDay; uniform sampler2D uLights;
+varying vec3 vN; varying vec3 vObj; varying vec3 vView; varying vec2 vUv;
 ${NOISE}
 void main(){
-  float h=fbm(vObj*1.7+vec3(3.1,1.7,.4));
-  float land=smoothstep(.04,.1,h);
-  vec3 ocean=mix(vec3(.01,.06,.18),vec3(.02,.2,.42),smoothstep(-.4,.05,h));
-  vec3 ground=mix(vec3(.13,.32,.11),vec3(.5,.42,.24),smoothstep(.1,.42,fbm3(vObj*4.)+h));
-  float ice=smoothstep(.78,.9,abs(vObj.y)+.08*h);
-  vec3 surf=mix(mix(ocean,ground,land),vec3(.92,.95,1.),ice);
-  float cl=smoothstep(.12,.62,fbm(vObj*2.6+vec3(uTime*.012,0.,uTime*.006)));
+  vec3 surf=texture2D(uDay,vUv).rgb;
+  float lights=texture2D(uLights,vUv).r;
+  float water=smoothstep(.06,.0,surf.g-surf.b+.02)*smoothstep(.45,.2,surf.r);
+  float cl=smoothstep(.18,.7,fbm3(vObj*3.1+vec3(uTime*.01,0.,uTime*.005)))*.75;
   float dif=dot(vN,uSun);
-  float lit=smoothstep(-.12,.35,dif);
+  float lit=smoothstep(-.1,.3,dif);
   vec3 r=reflect(-uSun,vN);
-  float spec=pow(max(dot(r,vView),0.),28.)*(1.-land)*(1.-cl)*.7;
-  vec3 day=mix(surf,vec3(1.),cl*.85)*lit+spec*vec3(1.,.9,.7);
-  float city=land*(1.-ice)*smoothstep(.55,.8,snoise(vObj*38.))*(1.-lit)*(1.-cl*.8);
-  vec3 col=day+city*vec3(1.,.62,.25)*1.4;
+  float spec=pow(max(dot(r,vView),0.),30.)*water*(1.-cl)*.6;
+  vec3 day=mix(surf*1.15,vec3(1.),cl)*lit+spec*vec3(1.,.9,.72);
+  vec3 night=vec3(1.,.66,.3)*pow(lights,1.4)*1.8*(1.-cl*.7);
+  vec3 col=day+night*(1.-lit)+surf*.035;
   float mu=max(dot(vN,vView),0.);
-  col+=vec3(.25,.55,1.)*pow(1.-mu,3.)*(.15+.85*lit);
+  col+=vec3(.25,.55,1.)*pow(1.-mu,3.)*(.12+.88*lit);
   gl_FragColor=vec4(col,1.);
 }`
 
@@ -104,11 +102,15 @@ uniform vec3 uSun;
 varying vec3 vN; varying vec3 vObj; varying vec3 vView;
 ${NOISE}
 void main(){
-  float m=smoothstep(.05,.3,fbm3(vObj*1.6+vec3(7.)));
-  float cr=smoothstep(.55,.85,1.-abs(snoise(vObj*9.)))*.18;
-  vec3 c=mix(vec3(.62,.61,.6),vec3(.32,.32,.34),m)-cr;
+  float m=smoothstep(-.05,.4,fbm3(vObj*1.25+vec3(7.)));
+  float d=fbm(vObj*7.)*.5+.5;
+  vec3 c=mix(vec3(.8,.79,.77),vec3(.4,.41,.44),m*.8);
+  c*=.86+.28*(d-.5);
+  float k=snoise(vObj*13.);
+  c+=(smoothstep(.62,.72,k)-smoothstep(.72,.9,k)*.7)*.07;
   float lit=smoothstep(-.05,.4,dot(vN,uSun));
-  gl_FragColor=vec4(c*(.04+.96*lit),1.);
+  float mu=max(dot(vN,vView),0.);
+  gl_FragColor=vec4(c*(.07+.98*lit)+vec3(.55,.62,.8)*pow(1.-mu,2.5)*.25*lit,1.);
 }`
 
 // Thin atmosphere halo around the earth (back faces, additive).
@@ -127,7 +129,7 @@ export const SKY_VERT = /* glsl */ `
 varying vec3 vDir;
 void main(){ vDir=normalize(position); vec4 p=projectionMatrix*modelViewMatrix*vec4(position,1.); gl_Position=p.xyww; }`
 export const SKY_FRAG = /* glsl */ `
-uniform float uTime; uniform float uLight;
+uniform float uTime; uniform float uLight; uniform float uNight;
 varying vec3 vDir;
 ${NOISE}
 void main(){
@@ -138,6 +140,7 @@ void main(){
   vec3 base=mix(vec3(.004,.006,.02),vec3(.012,.016,.045),d.y*.5+.5);
   vec3 neb=vec3(.32,.12,.55)*smoothstep(.0,.7,n)*.42+vec3(.05,.3,.5)*smoothstep(.15,.8,n2)*.3;
   vec3 dark=base+neb*(.35+.65*band)+vec3(.1,.11,.2)*band*smoothstep(-.2,.6,n2)*.5;
+  dark=mix(dark,dark*vec3(.8,.95,1.4)+vec3(.004,.008,.03),uNight);
   vec3 sky=mix(vec3(.98,.95,.93),vec3(.78,.86,1.),smoothstep(-.3,.8,d.y));
   sky+=vec3(.45,.3,.6)*smoothstep(.2,.9,n)*.08+vec3(.2,.4,.6)*smoothstep(.3,.9,n2)*.06;
   gl_FragColor=vec4(mix(dark,sky,uLight),1.);
@@ -154,13 +157,13 @@ void main(){
 
 export const STAR_VERT = /* glsl */ `
 attribute float aSize; attribute float aPhase; attribute vec3 color;
-uniform float uTime; uniform float uPix; uniform float uLight;
+uniform float uTime; uniform float uPix; uniform float uLight; uniform float uNight;
 varying vec3 vCol; varying float vA;
 void main(){
   vec4 mv=modelViewMatrix*vec4(position,1.);
   gl_Position=projectionMatrix*mv;
   gl_PointSize=aSize*uPix;
-  vCol=color; vA=(.55+.45*sin(uTime*(.6+aPhase)+aPhase*20.))*(1.-.92*uLight);
+  vCol=color; vA=(.55+.45*sin(uTime*(.6+aPhase)+aPhase*20.))*(1.-.92*uLight)*(1.+.5*uNight);
 }`
 
 // Spiral galaxy: each star orbits faster near the core (differential rotation).
