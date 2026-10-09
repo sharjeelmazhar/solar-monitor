@@ -64,6 +64,9 @@
 #define LED_PIN      -1                 // the RGB LED needs a driver; status shows in the apps instead
 #define LED_ON       HIGH
 #define BOOT_BTN_PIN 0
+#define RS485_RX_PIN 4                  // reserved for the Modbus brands (RS485 module RO), see docs/wiring
+#define RS485_TX_PIN 5                  // RS485 module DI
+#define RS485_DE_PIN 6                  // RS485 module DE+RE (unused with auto-direction modules)
 #else                                   // classic ESP32 DevKit (ESP32-WROOM-32, micro-USB)
 #define FW_BOARD     "esp32"
 #define INV_RX_PIN   16

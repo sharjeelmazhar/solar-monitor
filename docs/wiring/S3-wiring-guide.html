@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S3 Wiring Guide</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 "Segoe UI", system-ui, sans-serif; color: #1b1f2a; background: #fff; }
+  .page { width: 210mm; min-height: 297mm; padding: 13mm 13mm 11mm; position: relative; page-break-after: always; overflow: hidden; }
+  .page:last-child { page-break-after: auto; }
+  h1 { font-size: 30px; margin: 0; letter-spacing: -.02em; }
+  h2 { font-size: 19px; margin: 18px 0 8px; display: flex; align-items: center; gap: 10px; }
+  .n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: #fff; font-size: 15px; font-weight: 700; flex: none; }
+  .sub { color: #5b6275; margin: 4px 0 0; }
+  .band { height: 8px; border-radius: 4px; margin: 10px 0 14px; background: linear-gradient(90deg,#f59e0b,#ef4444,#8b5cf6,#3b82f6,#10b981); }
+  .verdict { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .box { border-radius: 14px; padding: 12px 14px; }
+  .box b.t { display: block; font-size: 16px; margin-bottom: 4px; }
+  .green { background: #e8f8ef; border: 2px solid #10b981; }
+  .blue { background: #eaf1ff; border: 2px solid #3b82f6; }
+  .amber { background: #fff6e5; border: 2px solid #f59e0b; }
+  .red { background: #ffecec; border: 2px solid #ef4444; }
+  .purple { background: #f3edff; border: 2px solid #8b5cf6; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid #e3e6ee; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #5b6275; }
+  .w { display: inline-block; width: 26px; height: 8px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+  .pin { font-weight: 700; font-family: Consolas, monospace; background: #1b1f2a; color: #fff; border-radius: 6px; padding: 1px 7px; }
+  ul { margin: 6px 0; padding-left: 20px; } li { margin: 3px 0; }
+  .small { font-size: 12.5px; color: #5b6275; }
+  .foot { position: absolute; bottom: 7mm; left: 13mm; right: 13mm; font-size: 11px; color: #8a90a2; display: flex; justify-content: space-between; }
+  svg text { font-family: "Segoe UI", system-ui, sans-serif; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+</style>
+</head>
+<body>
+
+<!-- PAGE 1 -->
+<section class="page">
+  <h1>⚡ Wiring the new ESP32-S3 board</h1>
+  <p class="sub">For Yasir · Solar Monitor · board YD-ESP32-23 (ESP32-S3 N16R8) · 9 Oct 2026</p>
+  <div class="band"></div>
+
+  <div class="verdict">
+    <div class="box green">
+      <b class="t">✅ Our inverters (Inverex Veyron, Galaxy): 3 wires is everything</b>
+      Their RJ45 jack is an <b>RS232</b> port. RS232 has only 3 lines: <b>send, receive, ground</b>. The inverter sends <b>all</b> its data (solar, PV1/PV2, battery, grid, load, settings, faults) over those 3. Extra wires would carry nothing more.
+    </div>
+    <div class="box blue">
+      <b class="t">➕ Neighbours / other brands: add one small RS485 module now</b>
+      Nitrox, Growatt, SolaX (Fronus), Solis, Sungrow, Huawei use a different "language" called <b>RS485 Modbus</b>, on <b>different RJ45 pins</b>, and every brand puts them on different pins. So we add a second module and a <b>screw-terminal RJ45 jack</b>, so any brand can be wired by moving 2–3 screw wires, without re-crimping.
+    </div>
+  </div>
+
+  <h2><span class="n" style="background:#8b5cf6">1</span> The full picture (everything connected)</h2>
+
+  <svg viewBox="0 0 760 520" width="100%" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="sh" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity=".18"/></filter>
+    </defs>
+
+    <!-- inverter cable -->
+    <rect x="8" y="20" width="118" height="56" rx="10" fill="#334155" filter="url(#sh)"/>
+    <text x="67" y="44" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">Inverter</text>
+    <text x="67" y="62" fill="#cbd5e1" font-size="11" text-anchor="middle">RJ45 comm port</text>
+    <path d="M67 76 V100" stroke="#64748b" stroke-width="8" stroke-linecap="round"/>
+    <text x="80" y="96" fill="#64748b" font-size="11">network cable</text>
+
+    <!-- RJ45 breakout -->
+    <rect x="8" y="104" width="150" height="300" rx="12" fill="#0f172a" filter="url(#sh)"/>
+    <text x="83" y="126" fill="#fff" font-size="13" font-weight="700" text-anchor="middle">RJ45 breakout</text>
+    <text x="83" y="142" fill="#94a3b8" font-size="10.5" text-anchor="middle">8 screw terminals</text>
+    <g font-size="12" font-weight="700">
+      <!-- pins 1..8, y = 165 + 30*(i-1) -->
+      <g><rect x="22" y="155" width="34" height="20" rx="4" fill="#fdba74"/><text x="39" y="170" text-anchor="middle" fill="#1b1f2a">1</text><circle cx="140" cy="165" r="6" fill="#e2e8f0"/></g>
+      <g><rect x="22" y="185" width="34" height="20" rx="4" fill="#f97316"/><text x="39" y="200" text-anchor="middle" fill="#fff">2</text><circle cx="140" cy="195" r="6" fill="#e2e8f0"/></g>
+      <g><rect x="22" y="215" width="34" height="20" rx="4" fill="#86efac"/><text x="39" y="230" text-anchor="middle" fill="#1b1f2a">3</text><circle cx="140" cy="225" r="6" fill="#e2e8f0"/></g>
+      <g><rect x="22" y="245" width="34" height="20" rx="4" fill="#3b82f6"/><text x="39" y="260" text-anchor="middle" fill="#fff">4</text><circle cx="140" cy="255" r="6" fill="#e2e8f0"/></g>
+      <g><rect x="22" y="275" width="34" height="20" rx="4" fill="#93c5fd"/><text x="39" y="290" text-anchor="middle" fill="#1b1f2a">5</text><circle cx="140" cy="285" r="6" fill="#e2e8f0"/></g>
+      <g><rect x="22" y="305" width="34" height="20" rx="4" fill="#16a34a"/><text x="39" y="320" text-anchor="middle" fill="#fff">6</text><circle cx="140" cy="315" r="6" fill="#e2e8f0"/></g>
+      <g><rect x="22" y="335" width="34" height="20" rx="4" fill="#d6b38a"/><text x="39" y="350" text-anchor="middle" fill="#1b1f2a">7</text><circle cx="140" cy="345" r="6" fill="#e2e8f0"/></g>
+      <g><rect x="22" y="365" width="34" height="20" rx="4" fill="#78350f"/><text x="39" y="380" text-anchor="middle" fill="#fff">8</text><circle cx="140" cy="375" r="6" fill="#e2e8f0"/></g>
+    </g>
+    <g font-size="10" fill="#94a3b8"><text x="62" y="169">inv TX</text><text x="62" y="199">inv RX</text><text x="62" y="379">GND</text>
+      <text x="62" y="259" fill="#93c5fd">brand</text><text x="62" y="289" fill="#93c5fd">brand</text></g>
+
+    <!-- MAX3232 -->
+    <rect x="262" y="120" width="150" height="150" rx="12" fill="#dc2626" filter="url(#sh)"/>
+    <text x="337" y="142" fill="#fff" font-size="14" font-weight="700" text-anchor="middle">MAX3232</text>
+    <text x="337" y="157" fill="#fecaca" font-size="10.5" text-anchor="middle">RS232 module (you have it)</text>
+    <g font-size="11" fill="#fff" font-weight="600">
+      <text x="270" y="180">R1IN</text><text x="270" y="200">T1OUT</text><text x="270" y="240">GND</text>
+      <text x="404" y="180" text-anchor="end">VCC</text><text x="404" y="200" text-anchor="end">GND</text><text x="404" y="220" text-anchor="end">TXD</text><text x="404" y="240" text-anchor="end">RXD</text>
+    </g>
+
+    <!-- RS485 -->
+    <rect x="262" y="300" width="150" height="160" rx="12" fill="#2563eb" filter="url(#sh)"/>
+    <text x="337" y="322" fill="#fff" font-size="14" font-weight="700" text-anchor="middle">RS485 module</text>
+    <text x="337" y="337" fill="#bfdbfe" font-size="10.5" text-anchor="middle">NEW · TTL↔RS485, 3.3 V</text>
+    <g font-size="11" fill="#fff" font-weight="600">
+      <text x="270" y="365">A (+)</text><text x="270" y="385">B (−)</text><text x="270" y="405">GND</text>
+      <text x="404" y="365" text-anchor="end">VCC</text><text x="404" y="385" text-anchor="end">GND</text><text x="404" y="405" text-anchor="end">RXD / RO</text><text x="404" y="425" text-anchor="end">TXD / DI</text><text x="404" y="445" text-anchor="end">DE+RE*</text>
+    </g>
+
+    <!-- ESP32-S3 -->
+    <rect x="560" y="100" width="190" height="390" rx="14" fill="#111827" filter="url(#sh)"/>
+    <rect x="600" y="112" width="110" height="70" rx="6" fill="#9ca3af"/>
+    <text x="655" y="145" font-size="12" font-weight="700" text-anchor="middle" fill="#111827">ESP32-S3</text>
+    <text x="655" y="161" font-size="10" text-anchor="middle" fill="#1f2937">N16R8</text>
+    <g font-size="12" font-weight="700">
+      <g><rect x="568" y="200" width="54" height="20" rx="4" fill="#ef4444"/><text x="595" y="215" text-anchor="middle" fill="#fff">3V3</text></g>
+      <g><rect x="568" y="230" width="54" height="20" rx="4" fill="#1f2937" stroke="#9ca3af"/><text x="595" y="245" text-anchor="middle" fill="#fff">GND</text></g>
+      <g><rect x="568" y="260" width="54" height="20" rx="4" fill="#facc15"/><text x="595" y="275" text-anchor="middle">18</text></g>
+      <g><rect x="568" y="290" width="54" height="20" rx="4" fill="#22c55e"/><text x="595" y="305" text-anchor="middle">17</text></g>
+      <g><rect x="568" y="350" width="54" height="20" rx="4" fill="#a855f7"/><text x="595" y="365" text-anchor="middle" fill="#fff">4</text></g>
+      <g><rect x="568" y="380" width="54" height="20" rx="4" fill="#06b6d4"/><text x="595" y="395" text-anchor="middle">5</text></g>
+      <g><rect x="568" y="410" width="54" height="20" rx="4" fill="#f472b6"/><text x="595" y="425" text-anchor="middle">6</text></g>
+    </g>
+    <text x="632" y="215" font-size="10.5" fill="#cbd5e1">power 3.3 V</text>
+    <text x="632" y="245" font-size="10.5" fill="#cbd5e1">ground</text>
+    <text x="632" y="275" font-size="10.5" fill="#cbd5e1">RS232 in</text>
+    <text x="632" y="305" font-size="10.5" fill="#cbd5e1">RS232 out</text>
+    <text x="632" y="365" font-size="10.5" fill="#cbd5e1">RS485 in</text>
+    <text x="632" y="395" font-size="10.5" fill="#cbd5e1">RS485 out</text>
+    <text x="632" y="425" font-size="10.5" fill="#cbd5e1">RS485 direction</text>
+    <g font-size="10.5" font-weight="700" fill="#fff">
+      <rect x="590" y="462" width="56" height="20" rx="5" fill="#475569"/><text x="618" y="476" text-anchor="middle">COM</text>
+      <rect x="660" y="462" width="56" height="20" rx="5" fill="#475569"/><text x="688" y="476" text-anchor="middle">USB</text>
+    </g>
+    <text x="655" y="505" font-size="10.5" fill="#475569" text-anchor="middle">COM: PC / power · USB: later</text>
+
+    <!-- RS232 cable wires (solid) -->
+    <g fill="none" stroke-width="3.5" stroke-linecap="round">
+      <path d="M146 165 C200 165 210 176 262 176" stroke="#fb923c"/>
+      <path d="M146 195 C200 195 210 196 262 196" stroke="#f97316"/>
+      <path d="M146 375 C215 375 205 236 262 236" stroke="#78350f"/>
+    </g>
+    <!-- RS485 cable wires (dashed: brand-specific) -->
+    <g fill="none" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 6">
+      <path d="M146 255 C210 255 205 361 262 361" stroke="#3b82f6"/>
+      <path d="M146 285 C205 285 210 381 262 381" stroke="#60a5fa"/>
+      <path d="M146 375 C215 375 215 401 262 401" stroke="#78350f"/>
+    </g>
+    <text x="10" y="424" font-size="11" fill="#2563eb" font-weight="700">dashed = pins depend on brand</text>
+    <text x="10" y="439" font-size="11" fill="#2563eb">(example only; we confirm per inverter)</text>
+
+    <!-- board-side jumpers -->
+    <g fill="none" stroke-width="3.5" stroke-linecap="round">
+      <path d="M412 176 C490 176 490 210 568 210" stroke="#ef4444"/>
+      <path d="M412 196 C490 196 490 240 568 240" stroke="#374151"/>
+      <path d="M412 216 C490 216 490 270 568 270" stroke="#facc15"/>
+      <path d="M412 236 C490 236 490 300 568 300" stroke="#22c55e"/>
+      <path d="M412 361 C480 361 470 214 568 212" stroke="#ef4444" stroke-dasharray="1 0"/>
+      <path d="M412 381 C480 381 480 244 568 242" stroke="#374151"/>
+      <path d="M412 401 C490 401 490 360 568 360" stroke="#a855f7"/>
+      <path d="M412 421 C490 421 490 390 568 390" stroke="#06b6d4"/>
+      <path d="M412 441 C490 441 490 420 568 420" stroke="#f472b6" stroke-dasharray="4 5"/>
+    </g>
+    <text x="262" y="480" font-size="10.5" fill="#be185d">* only if the module has a DE/RE pin</text>
+  </svg>
+
+  <p class="small">Inside the network cable the 8 colours are the standard ones (T568B: 1 orange-white, 2 orange, 3 green-white, 4 blue, 5 blue-white, 6 green, 7 brown-white, 8 brown). Always go by the <b>pin number</b>, not the colour: some cables are wired differently.</p>
+
+  <div class="foot"><span>Solar Monitor · S3 wiring guide</span><span>page 1 / 3</span></div>
+</section>
+
+<!-- PAGE 2 -->
+<section class="page">
+  <h2 style="margin-top:0"><span class="n" style="background:#dc2626">2</span> RS232 part: same as the C3 (do this today)</h2>
+  <div class="two">
+    <table class="box red" style="padding:6px">
+      <tr><th>Cable / RJ45</th><th>MAX3232</th></tr>
+      <tr><td><span class="w" style="background:#fb923c"></span>Pin <span class="pin">1</span> inverter TX</td><td>R1IN (RS232 in)</td></tr>
+      <tr><td><span class="w" style="background:#f97316"></span>Pin <span class="pin">2</span> inverter RX</td><td>T1OUT (RS232 out)</td></tr>
+      <tr><td><span class="w" style="background:#78350f"></span>Pin <span class="pin">8</span> ground</td><td>GND (RS232 side)</td></tr>
+    </table>
+    <table class="box red" style="padding:6px">
+      <tr><th>MAX3232</th><th>ESP32-S3</th></tr>
+      <tr><td><span class="w" style="background:#ef4444"></span>VCC</td><td><span class="pin">3V3</span></td></tr>
+      <tr><td><span class="w" style="background:#374151"></span>GND</td><td><span class="pin">GND</span></td></tr>
+      <tr><td><span class="w" style="background:#facc15"></span>TXD</td><td><span class="pin">18</span> <span class="small">(was 10 on C3)</span></td></tr>
+      <tr><td><span class="w" style="background:#22c55e"></span>RXD</td><td><span class="pin">17</span> <span class="small">(was 20 on C3)</span></td></tr>
+    </table>
+  </div>
+  <p class="small">If no data arrives after wiring, swap the two wires on <b>17</b> and <b>18</b> (some MAX3232 boards label TXD/RXD from the other side). Swapping these is safe.</p>
+
+  <h2><span class="n" style="background:#2563eb">3</span> RS485 part: for other brands (fit it now, use it later)</h2>
+  <div class="two">
+    <table class="box blue" style="padding:6px">
+      <tr><th>RS485 module</th><th>ESP32-S3</th></tr>
+      <tr><td><span class="w" style="background:#ef4444"></span>VCC</td><td><span class="pin">3V3</span></td></tr>
+      <tr><td><span class="w" style="background:#374151"></span>GND</td><td><span class="pin">GND</span></td></tr>
+      <tr><td><span class="w" style="background:#a855f7"></span>RXD / RO</td><td><span class="pin">4</span></td></tr>
+      <tr><td><span class="w" style="background:#06b6d4"></span>TXD / DI</td><td><span class="pin">5</span></td></tr>
+      <tr><td><span class="w" style="background:#f472b6"></span>DE + RE (tied)</td><td><span class="pin">6</span> <span class="small">only if present</span></td></tr>
+    </table>
+    <div class="box blue">
+      <b class="t">Cable side: A, B, GND</b>
+      <ul>
+        <li>A (+) and B (−) go to the two RS485 pins of <b>that brand's</b> port. GND to its ground pin, if it has one.</li>
+        <li>Every brand is different (for example SolaX uses pins 4 and 5). We look it up in the brand's manual before connecting.</li>
+        <li>If the readings are garbage, swap A and B. That is safe.</li>
+        <li>Two boards share 3V3 and GND: use the board's two GND pins, or join the wires.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2><span class="n" style="background:#f59e0b">4</span> Why not just connect more wires to the same cable?</h2>
+  <div class="box amber">
+    <ul>
+      <li><b>More wires ≠ more data.</b> The data comes from the <b>language</b> the inverter speaks. Voltronic (ours) speaks RS232 on pins 1, 2, 8 and sends everything there.</li>
+      <li>Other brands speak <b>RS485</b>, on <b>other pins</b>, and sometimes on a <b>different port</b> (labelled RS485, COM, BMS, Meter or DRM). The RS485 module covers them.</li>
+      <li>The <b>screw-terminal RJ45 breakout</b> lets us move wires per brand in 1 minute instead of cutting cables.</li>
+      <li>Growatt SPF also has a <b>USB</b> port: that goes into the S3's <b>USB</b> socket later, no wires needed.</li>
+    </ul>
+  </div>
+
+  <div class="foot"><span>Solar Monitor · S3 wiring guide</span><span>page 2 / 3</span></div>
+</section>
+<section class="page">
+  <h2 style="margin-top:0"><span class="n" style="background:#ef4444">5</span> Safety rules</h2>
+  <div class="box red">
+    <ul>
+      <li><b>Never</b> plug our cable into a neighbour's inverter before we check its port. Send a photo of the <b>label</b> (brand + model) and the <b>ports</b> first.</li>
+      <li>Never connect RS232 and RS485 to the <b>same</b> RJ45 pins at the same time. Only one module is wired to the cable per inverter.</li>
+      <li>Never put the inverter cable straight onto the ESP pins (RS232 is ±12 V). Always through a module.</li>
+      <li>Modules run on <b>3V3</b>, never 5 V. Don't use pins 0, 3, 19, 20, 35, 36, 37, 43, 44, 45, 46, 48.</li>
+      <li>Power the board from <b>one</b> USB cable only (COM port).</li>
+    </ul>
+  </div>
+
+  <h2><span class="n" style="background:#10b981">6</span> Shopping list (small extras)</h2>
+  <table class="box green" style="padding:6px">
+    <tr><th>Part</th><th>Ask for</th><th>Approx.</th></tr>
+    <tr><td>RS485 module</td><td>"TTL to RS485 module, 3.3 V, auto direction" (or MAX3485 / SP3485 board)</td><td>Rs 150–250</td></tr>
+    <tr><td>RJ45 breakout</td><td>"RJ45 female to 8-pin screw terminal" ×2 (one spare)</td><td>Rs 100–200</td></tr>
+    <tr><td>Jumper wires</td><td>Female-to-female Dupont, 20 cm, mixed colours</td><td>Rs 100</td></tr>
+    <tr><td>Later (Growatt)</td><td>USB-C OTG to USB-A adapter + USB-A to USB-B cable</td><td>Rs 300</td></tr>
+  </table>
+  <p class="small">Today you can wire just section 2 (3 wires + 4 jumpers). That gives 100% of the data from our Inverex and Galaxy. Add section 3 whenever the parts arrive.</p>
+
+  <div class="foot"><span>Solar Monitor · S3 wiring guide</span><span>page 3 / 3</span></div>
+</section>
+</body>
+</html>
