@@ -54,6 +54,26 @@ export function webglAvailable() {
   return glOk
 }
 
+// True when the browser draws without the graphics card (Chrome falls back to this after a GPU crash, an old
+// blocklisted driver, or with acceleration switched off). Then the 3D scene and the glass blur run on the CPU and
+// scrolling crawls, so both are switched off until the browser is restarted.
+let swGl: boolean | null = null
+export function gpuSoftware() {
+  if (swGl != null) return swGl
+  swGl = false
+  try {
+    const c = document.createElement('canvas')
+    const fast = c.getContext('webgl2', { failIfMajorPerformanceCaveat: true })
+    if (fast) {
+      const ext = fast.getExtension('WEBGL_debug_renderer_info')
+      const r = String(fast.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : fast.RENDERER))
+      swGl = /swiftshader|basic render|llvmpipe|softpipe|software/i.test(r)
+      fast.getExtension('WEBGL_lose_context')?.loseContext()
+    } else swGl = webglAvailable()
+  } catch { /* keep false */ }
+  return swGl
+}
+
 function default3d() {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return false
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
@@ -116,5 +136,5 @@ const setFx = (on: boolean) => {
 /** [enabled and supported, setter, user's choice] */
 export function use3d() {
   const on = useSyncExternalStore((l) => { fxListeners.add(l); return () => fxListeners.delete(l) }, getFx)
-  return [on && webglAvailable(), setFx, on] as const
+  return [on && webglAvailable() && !gpuSoftware(), setFx, on] as const
 }

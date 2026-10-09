@@ -316,3 +316,11 @@ html.cosmos-3d.dark .modal-glass { background: rgb(12 15 28 / 0.8) !important; }
 }
 html:not(.dark) .text-scrim::before { background: radial-gradient(ellipse 70% 75% at 22% 55%, rgb(240 245 252 / 0.6), transparent 72%); }
 html:not(.cosmos-3d) .text-scrim::before { display: none; }
+
+/* no graphics card (software drawing): blur behind glass costs the CPU on every scroll frame, so use solid tints */
+html.nogpu .glass, html.nogpu .glass-nav, html.nogpu .glass-chip, html.nogpu .modal-glass, html.nogpu .backdrop-blur-xl {
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+}
+html.nogpu .glass-nav { background: var(--surface-solid); }
+html.nogpu .glass-chip { background: rgb(8 10 22 / 0.9); }
+html.nogpu:not(.dark) .glass-chip { background: rgb(255 255 255 / 0.94); }

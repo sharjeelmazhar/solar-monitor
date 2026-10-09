@@ -4,7 +4,7 @@ import { BillSettings } from '../components/BillSettings'
 import { InverterSettings } from '../components/InverterSettings'
 import { Button, Card, CardHeader, Segmented, Switch } from '../components/ui/ui'
 import { dayLabel, fmtDuration } from '../lib/format'
-import { use3d, useBattIdle, useClock, webglAvailable, type Theme } from '../lib/prefs'
+import { gpuSoftware, use3d, useBattIdle, useClock, webglAvailable, type Theme } from '../lib/prefs'
 import { API_BASE, saveSettings, useStore } from '../lib/store'
 import { parseRated } from '../lib/decode'
 import { Alerts, alertsOf } from './OverviewPage'
@@ -150,12 +150,13 @@ function ClockFormat() {
 
 function ThreeD() {
   const [, setOn, wanted] = use3d()
-  const supported = webglAvailable()
+  const sw = gpuSoftware()
+  const supported = webglAvailable() && !sw
   return (
     <div className="flex items-center justify-between gap-3">
       <div>
         <div className="text-sm">3D universe background</div>
-        <div className="text-xs text-text-3">{supported ? 'Live sun, earth and galaxy behind the app. Turn it off on slow phones.' : '3D needs graphics acceleration, which is off in this browser. In Chrome: Settings → System → "Use graphics acceleration when available", then restart Chrome.'}</div>
+        <div className="text-xs text-text-3">{sw ? 'Paused: the browser is drawing without the graphics card right now (this happens after a graphics crash). Restart the browser to bring it back.' : supported ? 'Live sun, earth and galaxy behind the app. Turn it off on slow phones.' : '3D needs graphics acceleration, which is off in this browser. In Chrome: Settings → System → "Use graphics acceleration when available", then restart Chrome.'}</div>
       </div>
       <Switch label="3D universe background" checked={wanted && supported} onChange={setOn} />
     </div>

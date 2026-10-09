@@ -3,7 +3,7 @@ import { MotionConfig, motion } from 'motion/react'
 import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { IconButton, cn } from './components/ui/ui'
 import { hhmmss } from './lib/format'
-import { use3d, useClock, useTheme, type Theme } from './lib/prefs'
+import { gpuSoftware, use3d, useClock, useTheme, type Theme } from './lib/prefs'
 import { useStale, useStore } from './lib/store'
 import OverviewPage from './pages/OverviewPage'
 
@@ -62,7 +62,7 @@ export default function App() {
   useEffect(() => { document.title = title }, [title])
   const nextTheme: Record<Theme, Theme> = { system: dark ? 'light' : 'dark', light: 'dark', dark: 'system' }
   const ThemeIcon = theme === 'system' ? Monitor : theme === 'dark' ? Moon : Sun
-  const [want3d, setFx] = use3d()
+  const [want3d, setFx, want3dChoice] = use3d()
   const [failed3d, setFailed3d] = useState(false)
   useEffect(() => {
     const off = () => setFailed3d(true), on = () => setFailed3d(false)
@@ -74,6 +74,9 @@ export default function App() {
   useSpotlight()
   useEffect(() => { let t = 0; const later = () => { t = window.setTimeout(() => { loadHistory(); loadEnergy(); loadOutages(); loadSystem() }, 1500) }; load3d().then(later, later); return () => clearTimeout(t) }, [])
   const [slowTip, setSlowTip] = useSlowTip()
+  const [gpuTip, setGpuTip] = useState(() => gpuSoftware() && want3dChoice)
+  useEffect(() => { document.documentElement.classList.toggle('nogpu', gpuSoftware()) }, [])
+  useEffect(() => { if (!gpuTip) return; const t = setTimeout(() => setGpuTip(false), 16000); return () => clearTimeout(t) }, [gpuTip])
 
   let page: ReactNode
   if (tab === 'history') page = <HistoryPage />
@@ -131,6 +134,14 @@ export default function App() {
           <span className="text-text-2">3D looks slow on this device</span>
           <button className="focus-ring min-h-8 rounded-full bg-white/10 px-3 font-medium text-text hover:bg-white/20" onClick={() => { setFx(false); setSlowTip(false) }}>Turn off</button>
           <button aria-label="Dismiss" className="focus-ring grid size-8 place-items-center rounded-full text-text-3 hover:text-text" onClick={() => setSlowTip(false)}>✕</button>
+        </motion.div>
+      )}
+
+      {gpuTip && !slowTip && (
+        <motion.div role="status" initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: 'spring', bounce: 0.3, duration: 0.6 }}
+          className="glass-chip fixed bottom-[calc(84px+env(safe-area-inset-bottom))] left-1/2 z-40 flex w-max max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-3 rounded-full py-1.5 pl-4 pr-1.5 text-[13px] md:bottom-6">
+          <span className="text-text-2">The browser isn't using the graphics card, so 3D is paused. Restart the browser to bring it back.</span>
+          <button aria-label="Dismiss" className="focus-ring grid size-8 shrink-0 place-items-center rounded-full text-text-3 hover:text-text" onClick={() => setGpuTip(false)}>✕</button>
         </motion.div>
       )}
 
