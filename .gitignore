@@ -30,3 +30,7 @@ Thumbs.db
 .claude/
 *.tsbuildinfo
 product-pitch/
+
+# private move kit + Claude handoff notes (repo is public for now)
+handoff/
+CLAUDE.md
