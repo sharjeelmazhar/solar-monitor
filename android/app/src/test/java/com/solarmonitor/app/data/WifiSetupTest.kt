@@ -28,8 +28,8 @@ class WifiSetupTest {
     }
 
     @Test fun joined() {
-        assertEquals(true to "10.0.0.5", WifiSetup.joined("""{"connected":true,"ssid":"N","ip":"10.0.0.5"}""", "N"))
-        assertEquals(false, WifiSetup.joined("""{"connected":true,"ssid":"Old","ip":"10.0.0.5"}""", "N").first)
+        assertEquals(true to "192.0.2.5", WifiSetup.joined("""{"connected":true,"ssid":"N","ip":"192.0.2.5"}""", "N"))
+        assertEquals(false, WifiSetup.joined("""{"connected":true,"ssid":"Old","ip":"192.0.2.5"}""", "N").first)
         assertEquals(false, WifiSetup.joined("""{"connected":false,"ssid":"N","ip":"0.0.0.0"}""", "N").first)
     }
 }
