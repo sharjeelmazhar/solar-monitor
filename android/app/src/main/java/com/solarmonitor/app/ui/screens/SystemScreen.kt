@@ -18,6 +18,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -41,6 +42,8 @@ fun SystemScreen(repo: Repository, padding: PaddingValues, toast: (String) -> Un
     val interval by repo.updateInterval.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
+    var wifiOpen by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    if (wifiOpen) WifiDialog(repo) { wifiOpen = false }
 
     ScreenList(padding) {
         d?.takeIf { it.ever }?.let { full("alerts") { AlertsCard(alertItems(it, noBatt = info?.rated?.battV == 0.0)) } }
@@ -64,9 +67,10 @@ fun SystemScreen(repo: Repository, padding: PaddingValues, toast: (String) -> Un
                     "Read cycle" to (p?.let { "${it.pollMs} ms" } ?: "–"),
                     "Open dashboards" to "${i.clients}",
                 ))
-                // the same three links as the web card; they open in the phone's browser
+                // same buttons as the web card; the two links open in the phone's browser
                 androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Classic dashboard" to "/classic", "Firmware update" to "/update", "Change Wi-Fi" to "/setup").forEach { (label, path) ->
+                    FilledTonalButton(onClick = { wifiOpen = true }) { Text("Change Wi-Fi") }
+                    listOf("Classic dashboard" to "/classic", "Firmware update" to "/update").forEach { (label, path) ->
                         FilledTonalButton(onClick = { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("http://${repo.prefs.value.host}$path"))) } }) {
                             Text(label); Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.padding(start = 6.dp).size(14.dp))
                         }

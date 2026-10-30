@@ -23,7 +23,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-/** One Android build published as a GitHub release: tag "android-v1.5.8" with one .apk asset. */
+/** One Android build published as a GitHub release: tag "v1.5.8" with one .apk asset (web-only releases have no APK and are skipped). */
 data class Release(val version: String, val notes: String, val apkUrl: String, val size: Long, val sha256: String)
 
 sealed interface UpdState {
@@ -45,7 +45,6 @@ sealed interface UpdState {
 class Updater(private val context: Context) {
     companion object {
         const val REPO = "sharjeelmazhar/solar-monitor"
-        const val TAG_PREFIX = "android-v"
         private const val CH_UPDATE = "update"
         private const val NOTIFY_ID = 40
 
@@ -67,8 +66,8 @@ class Updater(private val context: Context) {
             for (i in 0 until arr.length()) {
                 val r = arr.getJSONObject(i)
                 val tag = r.optString("tag_name")
-                if (!tag.startsWith(TAG_PREFIX) || r.optBoolean("draft") || r.optBoolean("prerelease")) continue
-                val v = tag.removePrefix(TAG_PREFIX)
+                if (!tag.startsWith("v") || r.optBoolean("draft") || r.optBoolean("prerelease")) continue
+                val v = tag.removePrefix("v")
                 val assets = r.optJSONArray("assets") ?: continue
                 val apk = (0 until assets.length()).map { assets.getJSONObject(it) }.firstOrNull { it.optString("name").endsWith(".apk") } ?: continue
                 if (!newer(v, current) || (best != null && !newer(v, best.version))) continue

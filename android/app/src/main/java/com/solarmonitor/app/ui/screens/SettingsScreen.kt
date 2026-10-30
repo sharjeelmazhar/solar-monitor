@@ -86,6 +86,9 @@ fun SettingsScreen(repo: Repository, padding: PaddingValues, toast: (String) -> 
                         (info?.let { " · v${it.fw}" } ?: ""),
                     color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium,
                 )
+                // the real reason, so a phone that can't connect can be diagnosed from a screenshot
+                val err by repo.error.collectAsStateWithLifecycle()
+                if (conn != Conn.Live) err?.let { Text("$it · Android ${android.os.Build.VERSION.RELEASE}", color = MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.bodySmall) }
                 Spacer(Modifier.padding(4.dp))
                 OutlinedTextField(host, { host = it }, label = { Text("Address (IP or name)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))

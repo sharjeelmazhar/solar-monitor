@@ -2,6 +2,7 @@ import { ExternalLink } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { BillSettings } from '../components/BillSettings'
 import { InverterSettings } from '../components/InverterSettings'
+import { WifiDialog } from '../components/WifiDialog'
 import { Button, Card, CardHeader, Segmented, Switch } from '../components/ui/ui'
 import { dayLabel, fmtDuration } from '../lib/format'
 import { gpuSoftware, use3d, useBattIdle, useClock, webglAvailable, type Theme } from '../lib/prefs'
@@ -25,6 +26,7 @@ function Row({ k, v, help }: { k: string; v: ReactNode; help?: string }) {
 export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void }) {
   const d = useStore((s) => s.live)
   const info = useStore((s) => s.info)
+  const [wifiOpen, setWifiOpen] = useState(false)
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
@@ -72,13 +74,13 @@ export default function SystemPage({ theme, setTheme }: { theme: Theme; setTheme
           </div>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
+          <Button onClick={() => setWifiOpen(true)}>Change Wi-Fi</Button>
           <a className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-2xl border border-border bg-surface-2 px-4 text-sm font-medium hover:bg-surface-3" href={API_BASE + '/classic'}>Classic dashboard <ExternalLink size={14} /></a>
           <a className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-2xl border border-border bg-surface-2 px-4 text-sm font-medium hover:bg-surface-3" href={API_BASE + '/update'} target="_blank" rel="noopener">Firmware update <ExternalLink size={14} /></a>
-          <a className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-2xl border border-border bg-surface-2 px-4 text-sm font-medium hover:bg-surface-3" href={API_BASE + '/setup'} target="_blank" rel="noopener">Change Wi-Fi <ExternalLink size={14} /></a>
         </div>
       </Card>
       <BillSettings />
-
+      <WifiDialog open={wifiOpen} onClose={() => setWifiOpen(false)} />
     </div>
   )
 }

@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 ver=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)
-tag="android-v$ver"
+tag="v$ver"
 notes="${1:-$(git log -1 --format=%s)}"
 
 [ -f keystore.properties ] || { echo "keystore.properties missing: the APK would be debug-signed and phones could not update to it."; exit 1; }
@@ -17,8 +17,8 @@ jdk=/usr/lib/jvm/java-21-openjdk-amd64
 ./gradlew -q ${JAVA_HOME:+-Dorg.gradle.java.installations.paths=$JAVA_HOME} testDebugUnitTest assembleRelease
 
 apk=app/build/outputs/apk/release/app-release.apk
-out=../dist/solar-monitor-$ver.apk
+out=../dist/SolarMonitor-$ver.apk
 mkdir -p ../dist
 cp "$apk" "$out.tmp" && mv "$out.tmp" "$out"
-gh release create "$tag" "$out" --title "Android $ver" --notes "$notes"
+gh release create "$tag" "$out" --title "Solar Monitor $ver" --notes "$notes"
 echo "Released $tag. Phones on an older version will see the update the next time the app opens."

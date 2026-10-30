@@ -32,6 +32,6 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       proxy: { '/api': proxy, '/events': proxy, '/raw': proxy, '/update': proxy, '/classic': proxy },
     },
-    test: { environment: 'node' },
+    test: { environment: 'node', env: { TZ: 'Asia/Karachi' } },   // tests use local-time clocks for the home site; CI runs on UTC
   }
 })

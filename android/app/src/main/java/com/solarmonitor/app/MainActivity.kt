@@ -175,15 +175,22 @@ private fun AppRoot(repo: Repository) {
         onDispose { owner.lifecycle.removeObserver(obs); repo.uiActive.value = false }
     }
 
-    // first run: ask for notifications, then start background monitoring
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        repo.prefs.update { it.copy(askedNotifications = true) }
-        if (granted && repo.prefs.value.background) MonitorService.start(ctx)
+    // first run: ask for notifications (and, on Android 17+, the local network: without it every request to the monitor
+    // silently times out), then start background monitoring
+    var askedLan by remember { mutableStateOf(false) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
+        if (Manifest.permission.POST_NOTIFICATIONS in res) repo.prefs.update { it.copy(askedNotifications = true) }
+        askedLan = true
+        if (repo.prefs.value.background) MonitorService.start(ctx)
     }
     LaunchedEffect(Unit) {
         val p = repo.prefs.value
-        if (Build.VERSION.SDK_INT >= 33 && !p.askedNotifications) permission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        else if (p.background) MonitorService.start(ctx)
+        val ask = buildList {
+            if (Build.VERSION.SDK_INT >= 33 && !p.askedNotifications) add(Manifest.permission.POST_NOTIFICATIONS)
+            if (!com.solarmonitor.app.ui.lanAllowed(ctx)) add(com.solarmonitor.app.ui.LAN_PERMISSION)
+        }
+        if (ask.isNotEmpty()) permission.launch(ask.toTypedArray())
+        else { askedLan = true; if (p.background) MonitorService.start(ctx) }
     }
 
     BackHandler(overlay != Overlay.None) { overlay = Overlay.None }
@@ -257,6 +264,11 @@ private fun AppRoot(repo: Repository) {
         if (showBar) FloatingBar(tab, { tab = it }, haze, Modifier.align(Alignment.BottomCenter))
     }
     }
+    val conn by repo.conn.collectAsStateWithLifecycle()
+    // give the first connection a moment before blaming the permission
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(askedLan) { if (askedLan) { delay(8000); settled = true } }
+    if (settled) com.solarmonitor.app.ui.LocalNetworkPrompt(reachable = conn == com.solarmonitor.app.data.Conn.Live)
     com.solarmonitor.app.update.UpdatePrompt()
 }
 

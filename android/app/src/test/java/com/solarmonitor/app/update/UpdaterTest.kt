@@ -21,17 +21,17 @@ class UpdaterTest {
         """{"tag_name":"$tag","draft":$draft,"prerelease":$pre,"body":"notes $tag","assets":[${apk?.let { """{"name":"$it","browser_download_url":"https://x/$tag.apk","size":123,"digest":"sha256:ab12"}""" } ?: ""}]}"""
 
     @Test fun picksNewestAndroidRelease() {
-        val json = "[" + listOf(rel("android-v1.5.8"), rel("android-v1.5.10"), rel("web-v1.7.0"), rel("android-v1.6.0", draft = true),
-            rel("android-v1.6.1", pre = true), rel("android-v1.9.0", apk = null)).joinToString(",") + "]"
+        val json = "[" + listOf(rel("v1.5.8"), rel("v1.5.10"), rel("ui-classic-1.5.6"), rel("v1.6.0", draft = true),
+            rel("v1.6.1", pre = true), rel("v1.9.0", apk = null)).joinToString(",") + "]"
         val r = Updater.pick(json, "1.5.7")!!
         assertEquals("1.5.10", r.version)
-        assertEquals("https://x/android-v1.5.10.apk", r.apkUrl)
+        assertEquals("https://x/v1.5.10.apk", r.apkUrl)
         assertEquals("ab12", r.sha256)
-        assertEquals("notes android-v1.5.10", r.notes)
+        assertEquals("notes v1.5.10", r.notes)
     }
 
     @Test fun nothingNewer() {
-        assertNull(Updater.pick("[" + rel("android-v1.5.7") + "]", "1.5.7"))
+        assertNull(Updater.pick("[" + rel("v1.5.7") + "]", "1.5.7"))
         assertNull(Updater.pick("[]", "1.5.7"))
     }
 }
