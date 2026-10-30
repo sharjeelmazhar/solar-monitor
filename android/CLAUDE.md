@@ -17,3 +17,9 @@ Native app for the ESP32-C3 solar monitor (firmware + web dashboard live in
 
 ## Build
 `assembleRelease` -> `app\build\outputs\apk\release\app-release.apk` (debug-signed). The emulator can reach the real device on the LAN through the host.
+
+## Releasing (in-app updates)
+Until the Play Store, the app updates itself from GitHub releases (`update/Updater`): tag `android-v<versionName>` with one
+`.apk` asset; the app checks on every open (at most every 15 min), and `MonitorService` checks twice a day and posts a
+notification. To publish: raise `versionCode` + `versionName`, commit, push, then `./release.sh "plain-words notes"`.
+The APK must be signed with the same release key as the installed app, or Android refuses the update.

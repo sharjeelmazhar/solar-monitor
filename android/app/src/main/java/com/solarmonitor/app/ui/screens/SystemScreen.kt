@@ -74,6 +74,7 @@ fun SystemScreen(repo: Repository, padding: PaddingValues, toast: (String) -> Un
                 }
             }
         }
+        item(key = "update") { com.solarmonitor.app.update.UpdateCard() }
         full("bill") { BillSettingsSection(repo, toast) }
     }
 }

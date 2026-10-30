@@ -257,6 +257,7 @@ private fun AppRoot(repo: Repository) {
         if (showBar) FloatingBar(tab, { tab = it }, haze, Modifier.align(Alignment.BottomCenter))
     }
     }
+    com.solarmonitor.app.update.UpdatePrompt()
 }
 
 /** Rounded glass tab bar floating above the content: light tint + blur so the page shows through (iOS-style). */

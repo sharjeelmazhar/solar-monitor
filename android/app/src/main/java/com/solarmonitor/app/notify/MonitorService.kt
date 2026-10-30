@@ -17,6 +17,7 @@ import com.solarmonitor.app.data.Conn
 import com.solarmonitor.app.data.Live
 import com.solarmonitor.app.data.Power
 import com.solarmonitor.app.repo
+import com.solarmonitor.app.update.updater
 import com.solarmonitor.app.ui.fmtW
 import com.solarmonitor.app.ui.hhmm
 import kotlinx.coroutines.CoroutineScope
@@ -85,6 +86,14 @@ class MonitorService : Service() {
                     if (days != null) alerts.checkUnits(days, repo.live.value, repo.bill.value ?: com.solarmonitor.app.data.BillConfig())
                 }
                 delay(30 * 60_000L)
+            }
+        }
+        // new app version: check twice a day and post a notification (once per version)
+        scope.launch {
+            delay(60_000)
+            while (isActive) {
+                runCatching { updater.checkAndNotify() }
+                delay(12 * 3600_000L)
             }
         }
     }

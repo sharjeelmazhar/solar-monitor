@@ -10,6 +10,8 @@ class SolarApp : Application() {
         private set
     lateinit var alerts: Alerts
         private set
+    lateinit var updater: com.solarmonitor.app.update.Updater
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -20,6 +22,8 @@ class SolarApp : Application() {
         alerts.createChannels()
         alerts.noBattery = { repo.info.value?.rated?.battV == 0.0 }
         repo.onReading = alerts::onReading
+        updater = com.solarmonitor.app.update.Updater(this)
+        updater.createChannel()
     }
 }
 
